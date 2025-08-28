@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+
+{% block title %}Tổng quan - Quản lý Test Case RAG{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-tachometer-alt"></i> Tổng quan</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+                <i class="fas fa-sync-alt"></i> Làm mới
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Tổng số Test Cases</div>
+                        <div class="h5 mb-0 font-weight-bold">{{ total_cases }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-list-check fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card-success h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Cases hợp lệ</div>
+                        <div class="h5 mb-0 font-weight-bold">{{ validation_report.get('valid_cases', 0) }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-check-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card-warning h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">Độ phủ</div>
+                        <div class="h5 mb-0 font-weight-bold">{{ "%.1f"|format(coverage_analysis.get('coverage_percentage', 0)) }}%</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-chart-pie fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card-info h-100">
+            <div class="card-body">
+                <div class="row no-gutters align-items-center">
+                    <div class="col mr-2">
+                        <div class="text-xs font-weight-bold text-uppercase mb-1">TB Steps</div>
+                        <div class="h5 mb-0 font-weight-bold">{{ stats.get('avg_steps', 0) }}</div>
+                    </div>
+                    <div class="col-auto">
+                        <i class="fas fa-route fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content Row -->
+<div class="row">
+    <!-- Test Case Categories -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-tags"></i> Test Case Categories</h5>
+            </div>
+            <div class="card-body">
+                {% if stats.get('purposes') %}
+                    <div class="row">
+                        {% for purpose, count in stats.purposes.items()[:8] %}
+                        <div class="col-md-6 mb-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-truncate" title="{{ purpose }}">{{ purpose[:30] }}{% if purpose|length > 30 %}...{% endif %}</span>
+                                <span class="badge badge-custom">{{ count }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted">No test case data available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Sources -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-database"></i> Data Sources</h5>
+            </div>
+            <div class="card-body">
+                {% if stats.get('test_data_sources') %}
+                    {% for source, count in stats.test_data_sources.items()[:8] %}
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="text-truncate" title="{{ source }}">{{ source }}</span>
+                        <span class="badge badge-custom">{{ count }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-muted">No data source information available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Validation Report -->
+{% if validation_report.get('errors') or validation_report.get('duplicate_ids') %}
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="card-title mb-0"><i class="fas fa-exclamation-triangle"></i> Validation Issues</h5>
+            </div>
+            <div class="card-body">
+                {% if validation_report.get('duplicate_ids') %}
+                <div class="alert alert-warning">
+                    <strong>Duplicate IDs found:</strong> {{ validation_report.duplicate_ids|join(', ') }}
+                </div>
+                {% endif %}
+                
+                {% if validation_report.get('errors') %}
+                <h6>Validation Errors:</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Test Case</th>
+                                <th>Errors</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for error in validation_report.errors %}
+                            <tr>
+                                <td>{{ error.id }}</td>
+                                <td>{{ error.errors|join(', ') }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Coverage Analysis Summary -->
+{% if coverage_analysis %}
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-chart-line"></i> Coverage Analysis Summary</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <div class="h3 text-primary">{{ coverage_analysis.get('covered_flow_steps', 0) }}/{{ coverage_analysis.get('total_flow_steps', 0) }}</div>
+                            <small class="text-muted">Flow Steps Covered</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <div class="h3 text-success">{{ coverage_analysis.get('coverage_percentage', 0) }}%</div>
+                            <small class="text-muted">Coverage Percentage</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <div class="h3 text-info">{{ coverage_analysis.get('missing_scenarios', [])|length }}</div>
+                            <small class="text-muted">Missing Scenarios</small>
+                        </div>
+                    </div>
+                </div>
+                
+                {% if coverage_analysis.get('recommendations') %}
+                <div class="mt-3">
+                    <h6>Recommendations:</h6>
+                    <ul class="list-unstyled">
+                        {% for rec in coverage_analysis.recommendations %}
+                        <li><i class="fas fa-lightbulb text-warning"></i> {{ rec }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+                
+                <div class="mt-3">
+                    <a href="{{ url_for('coverage_analysis') }}" class="btn btn-primary">
+                        <i class="fas fa-chart-line"></i> View Detailed Analysis
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Quick Actions -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-bolt"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('add_test_case') }}" class="btn btn-primary w-100">
+                            <i class="fas fa-plus"></i> Add Test Case
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('rag_demo') }}" class="btn btn-success w-100">
+                            <i class="fas fa-magic"></i> RAG Demo
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('test_cases') }}" class="btn btn-info w-100">
+                            <i class="fas fa-search"></i> Browse Cases
+                        </a>
+                    </div>
+                    <div class="col-md-3 mb-2">
+                        <a href="{{ url_for('export_data') }}" class="btn btn-secondary w-100">
+                            <i class="fas fa-download"></i> Export Data
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

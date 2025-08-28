@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block title %}Add Test Case - RAG Test Case Management{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-plus"></i> Add New Test Case</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <a href="{{ url_for('test_cases') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to List
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-edit"></i> Test Case Form</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="testCaseForm">
+                    <div class="mb-3">
+                        <label for="id" class="form-label">Test Case ID <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="id" name="id" required 
+                               placeholder="e.g., payment-success_1" pattern="[a-zA-Z0-9_-]+"
+                               title="Only letters, numbers, hyphens, and underscores allowed">
+                        <div class="form-text">Use format: category-scenario_number (e.g., payment-timeout_1)</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="purpose" class="form-label">Purpose <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="purpose" name="purpose" required
+                               placeholder="e.g., Kiểm tra thanh toán thành công">
+                        <div class="form-text">Clear business purpose of the test</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="scenerio" class="form-label">Scenario <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="scenerio" name="scenerio" rows="2" required
+                                  placeholder="e.g., TH khách hàng có dư nợ và số dư ví đủ để thanh toán"></textarea>
+                        <div class="form-text">Specific scenario being tested with conditions</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="test_data" class="form-label">Test Data <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="test_data" name="test_data" required
+                               placeholder="e.g., DB overdraft_transaction, Mock API response">
+                        <div class="form-text">Required data sources, DB tables, or mock data</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="steps" class="form-label">Test Steps <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="steps" name="steps" rows="6" required
+                                  placeholder="1. First step with actor and action&#10;2. Second step with system interaction&#10;3. Third step with validation"></textarea>
+                        <div class="form-text">Enter each step on a new line. Include actor, action, and system interactions.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="expected" class="form-label">Expected Results <span class="text-danger">*</span></label>
+                        <textarea class="form-control" id="expected" name="expected" rows="6" required
+                                  placeholder="1. Expected system behavior with specific status&#10;2. Database state changes with table details&#10;3. API response format and codes"></textarea>
+                        <div class="form-text">Enter each expected result on a new line. Be specific about status codes, database changes, etc.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="note" class="form-label">Note</label>
+                        <textarea class="form-control" id="note" name="note" rows="2"
+                                  placeholder="API references, business rules, or technical constraints"></textarea>
+                        <div class="form-text">Optional: API references, business rules, or technical constraints</div>
+                    </div>
+
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="button" class="btn btn-outline-secondary me-md-2" onclick="clearForm()">
+                            <i class="fas fa-eraser"></i> Clear
+                        </button>
+                        <button type="button" class="btn btn-outline-info me-md-2" onclick="validateForm()">
+                            <i class="fas fa-check-double"></i> Validate
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Save Test Case
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Guidelines -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-lightbulb"></i> Guidelines</h5>
+            </div>
+            <div class="card-body">
+                <h6>Test Case ID Format:</h6>
+                <ul class="small">
+                    <li><code>category-scenario_number</code></li>
+                    <li>Examples: <code>payment-success_1</code>, <code>api-timeout_1</code></li>
+                </ul>
+
+                <h6>Coverage Areas:</h6>
+                <ul class="small">
+                    <li>Happy path scenarios</li>
+                    <li>Error handling & edge cases</li>
+                    <li>Business logic validation</li>
+                    <li>Integration & concurrency</li>
+                    <li>Data consistency & rollback</li>
+                </ul>
+
+                <h6>Technical Details to Include:</h6>
+                <ul class="small">
+                    <li>Database tables and fields</li>
+                    <li>API endpoint references</li>
+                    <li>Status codes and error messages</li>
+                    <li>Timing constraints</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Sample Templates -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-templates"></i> Quick Templates</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadTemplate('api_success')">
+                        <i class="fas fa-check"></i> API Success
+                    </button>
+                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="loadTemplate('api_timeout')">
+                        <i class="fas fa-clock"></i> API Timeout
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="loadTemplate('api_error')">
+                        <i class="fas fa-exclamation-triangle"></i> API Error
+                    </button>
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="loadTemplate('db_transaction')">
+                        <i class="fas fa-database"></i> DB Transaction
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Validation Status -->
+        <div class="card" id="validationCard" style="display: none;">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-check-double"></i> Validation Status</h5>
+            </div>
+            <div class="card-body" id="validationResults">
+                <!-- Validation results will be shown here -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const templates = {
+    api_success: {
+        id: 'api-success_1',
+        purpose: 'Kiểm tra API call thành công',
+        scenerio: 'TH API được gọi với dữ liệu hợp lệ',
+        test_data: 'Valid API request data',
+        steps: '1. Gửi request với dữ liệu hợp lệ\n2. Hệ thống xử lý request\n3. Trả về response thành công',
+        expected: '1. API trả về status code 200\n2. Response chứa dữ liệu mong đợi\n3. Database được cập nhật chính xác',
+        note: 'Tham chiếu API documentation'
+    },
+    api_timeout: {
+        id: 'api-timeout_1',
+        purpose: 'Kiểm tra xử lý timeout',
+        scenerio: 'TH API không phản hồi trong thời gian quy định',
+        test_data: 'Mock timeout scenario',
+        steps: '1. Gửi request đến API\n2. API không phản hồi trong 30s\n3. Hệ thống xử lý timeout',
+        expected: '1. Hệ thống ghi log timeout\n2. Trả về error code TIMEOUT\n3. Không cập nhật database',
+        note: 'Timeout được cấu hình 30 giây'
+    },
+    api_error: {
+        id: 'api-error_1',
+        purpose: 'Kiểm tra xử lý lỗi API',
+        scenerio: 'TH API trả về mã lỗi',
+        test_data: 'Invalid API request data',
+        steps: '1. Gửi request với dữ liệu không hợp lệ\n2. API xử lý và phát hiện lỗi\n3. Trả về error response',
+        expected: '1. API trả về status code 4xx/5xx\n2. Response chứa error message\n3. Hệ thống ghi log lỗi',
+        note: 'Kiểm tra các mã lỗi khác nhau'
+    },
+    db_transaction: {
+        id: 'db-transaction_1',
+        purpose: 'Kiểm tra tính nhất quán database transaction',
+        scenerio: 'TH cập nhật nhiều bảng trong transaction',
+        test_data: 'Multiple database tables',
+        steps: '1. Bắt đầu database transaction\n2. Cập nhật bảng thứ nhất\n3. Cập nhật bảng thứ hai\n4. Commit transaction',
+        expected: '1. Cả hai bảng được cập nhật thành công\n2. Dữ liệu nhất quán giữa các bảng\n3. Transaction log được ghi đầy đủ',
+        note: 'Sử dụng database transaction để đảm bảo ACID'
+    }
+};
+
+function loadTemplate(templateName) {
+    const template = templates[templateName];
+    if (template) {
+        document.getElementById('id').value = template.id;
+        document.getElementById('purpose').value = template.purpose;
+        document.getElementById('scenerio').value = template.scenerio;
+        document.getElementById('test_data').value = template.test_data;
+        document.getElementById('steps').value = template.steps;
+        document.getElementById('expected').value = template.expected;
+        document.getElementById('note').value = template.note;
+    }
+}
+
+function clearForm() {
+    document.getElementById('testCaseForm').reset();
+    document.getElementById('validationCard').style.display = 'none';
+}
+
+function validateForm() {
+    const formData = new FormData(document.getElementById('testCaseForm'));
+    const testCase = {
+        id: formData.get('id'),
+        purpose: formData.get('purpose'),
+        scenerio: formData.get('scenerio'),
+        test_data: formData.get('test_data'),
+        steps: formData.get('steps').split('\n').filter(s => s.trim()),
+        expected: formData.get('expected').split('\n').filter(s => s.trim()),
+        note: formData.get('note')
+    };
+
+    fetch('/api/validate-test-case', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(testCase)
+    })
+    .then(response => response.json())
+    .then(data => {
+        const validationCard = document.getElementById('validationCard');
+        const validationResults = document.getElementById('validationResults');
+        
+        if (data.valid) {
+            validationResults.innerHTML = `
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i> Test case is valid!
+                </div>
+            `;
+        } else {
+            validationResults.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Validation errors:
+                    <ul class="mt-2 mb-0">
+                        ${data.errors.map(error => `<li>${error}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+        
+        validationCard.style.display = 'block';
+    })
+    .catch(error => {
+        console.error('Validation error:', error);
+        alert('Error validating test case: ' + error);
+    });
+}
+
+// Auto-generate ID based on purpose
+document.getElementById('purpose').addEventListener('input', function() {
+    const purpose = this.value.toLowerCase();
+    const idField = document.getElementById('id');
+    
+    if (!idField.value && purpose) {
+        // Simple ID generation logic
+        let category = 'test';
+        if (purpose.includes('thanh toán') || purpose.includes('payment')) category = 'payment';
+        else if (purpose.includes('timeout')) category = 'timeout';
+        else if (purpose.includes('lỗi') || purpose.includes('error')) category = 'error';
+        else if (purpose.includes('database') || purpose.includes('db')) category = 'database';
+        else if (purpose.includes('api')) category = 'api';
+        
+        idField.value = category + '-test_1';
+    }
+});
+</script>
+{% endblock %}

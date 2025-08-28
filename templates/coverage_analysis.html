@@ -1,0 +1,330 @@
+{% extends "base.html" %}
+
+{% block title %}Coverage Analysis - RAG Test Case Management{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-chart-line"></i> Test Coverage Analysis</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="location.reload()">
+                <i class="fas fa-sync-alt"></i> Refresh Analysis
+            </button>
+        </div>
+    </div>
+</div>
+
+{% if analysis %}
+<!-- Coverage Overview -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card h-100">
+            <div class="card-body text-center">
+                <div class="h2 mb-2">{{ analysis.total_test_cases }}</div>
+                <div class="text-uppercase">Total Test Cases</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card-{{ 'success' if analysis.coverage_percentage >= 70 else 'warning' if analysis.coverage_percentage >= 50 else 'danger' }} h-100">
+            <div class="card-body text-center">
+                <div class="h2 mb-2">{{ "%.1f"|format(analysis.coverage_percentage) }}%</div>
+                <div class="text-uppercase">Coverage Percentage</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card-info h-100">
+            <div class="card-body text-center">
+                <div class="h2 mb-2">{{ analysis.covered_flow_steps }}/{{ analysis.total_flow_steps }}</div>
+                <div class="text-uppercase">Flow Steps Covered</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-xl-3 col-md-6 mb-4">
+        <div class="card stat-card-warning h-100">
+            <div class="card-body text-center">
+                <div class="h2 mb-2">{{ analysis.missing_scenarios|length }}</div>
+                <div class="text-uppercase">Missing Scenarios</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Coverage Details -->
+<div class="row">
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-chart-pie"></i> Test Categories Distribution</h5>
+            </div>
+            <div class="card-body">
+                {% if analysis.coverage_areas %}
+                <canvas id="categoryChart" width="400" height="200"></canvas>
+                {% else %}
+                <p class="text-muted">No test category data available</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-chart-bar"></i> Coverage Progress</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>API Flow Coverage</span>
+                        <span>{{ "%.1f"|format(analysis.coverage_percentage) }}%</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar bg-{{ 'success' if analysis.coverage_percentage >= 70 else 'warning' if analysis.coverage_percentage >= 50 else 'danger' }}" 
+                             style="width: {{ analysis.coverage_percentage }}%"></div>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Test Case Quality</span>
+                        <span>{{ "%.0f"|format((analysis.total_test_cases / 20) * 100) }}%</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar bg-info" 
+                             style="width: {{ (analysis.total_test_cases / 20) * 100 }}%"></div>
+                    </div>
+                    <small class="text-muted">Based on 20 recommended test cases</small>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <span>Scenario Diversity</span>
+                        <span>{{ "%.0f"|format((analysis.coverage_areas|length / 10) * 100) }}%</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar bg-primary" 
+                             style="width: {{ (analysis.coverage_areas|length / 10) * 100 }}%"></div>
+                    </div>
+                    <small class="text-muted">Based on 10 different scenario types</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Missing Scenarios -->
+{% if analysis.missing_scenarios %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-exclamation-triangle"></i> Missing Test Scenarios</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for scenario in analysis.missing_scenarios %}
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="alert alert-{{ 'danger' if scenario.priority == 'high' else 'warning' if scenario.priority == 'medium' else 'info' }}">
+                            <h6 class="alert-heading">{{ scenario.category.title().replace('_', ' ') }}</h6>
+                            <p class="mb-1">{{ scenario.description }}</p>
+                            <small>{{ scenario.rationale }}</small>
+                            <div class="mt-2">
+                                <span class="badge bg-{{ 'danger' if scenario.priority == 'high' else 'warning' if scenario.priority == 'medium' else 'info' }}">
+                                    {{ scenario.priority.title() }} Priority
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Recommendations -->
+{% if analysis.recommendations %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-lightbulb"></i> Recommendations</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for recommendation in analysis.recommendations %}
+                    <div class="col-md-6 mb-3">
+                        <div class="d-flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-arrow-right text-primary"></i>
+                            </div>
+                            <div class="flex-grow-1 ms-3">
+                                {{ recommendation }}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                
+                <div class="mt-3">
+                    <a href="{{ url_for('add_test_case') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add Test Case
+                    </a>
+                    <a href="{{ url_for('rag_demo') }}" class="btn btn-success">
+                        <i class="fas fa-magic"></i> Generate with RAG
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Business Flows Analysis -->
+{% if flows %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-sitemap"></i> Business Flow Coverage</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Step</th>
+                                <th>Actor</th>
+                                <th>Description</th>
+                                <th>Coverage Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for flow in flows %}
+                            <tr>
+                                <td><span class="badge bg-secondary">{{ flow.step }}</span></td>
+                                <td>{{ flow.actor }}</td>
+                                <td>{{ flow.description[:100] }}{% if flow.description|length > 100 %}...{% endif %}</td>
+                                <td>
+                                    {% set is_covered = flow.step in analysis.get('covered_steps', []) %}
+                                    <span class="badge bg-{{ 'success' if is_covered else 'warning' }}">
+                                        <i class="fas fa-{{ 'check' if is_covered else 'times' }}"></i>
+                                        {{ 'Covered' if is_covered else 'Not Covered' }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                {% if flows|length > 10 %}
+                <div class="text-center mt-3">
+                    <button class="btn btn-outline-secondary" onclick="toggleFlowTable()">
+                        <i class="fas fa-eye"></i> Show All Flows
+                    </button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% else %}
+<!-- No Analysis Available -->
+<div class="text-center py-5">
+    <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
+    <h4 class="text-muted">No Coverage Analysis Available</h4>
+    <p class="text-muted">Unable to load API documentation or test cases for analysis</p>
+    <div class="mt-3">
+        <a href="{{ url_for('test_cases') }}" class="btn btn-primary">
+            <i class="fas fa-list-check"></i> View Test Cases
+        </a>
+        <a href="{{ url_for('add_test_case') }}" class="btn btn-success">
+            <i class="fas fa-plus"></i> Add Test Case
+        </a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if analysis and analysis.coverage_areas %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Category Distribution Chart
+const ctx = document.getElementById('categoryChart').getContext('2d');
+const categoryData = {{ analysis.coverage_areas | tojson }};
+
+const chart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+        labels: Object.keys(categoryData),
+        datasets: [{
+            data: Object.values(categoryData),
+            backgroundColor: [
+                '#667eea', '#764ba2', '#f093fb', '#f5576c',
+                '#4facfe', '#00f2fe', '#43e97b', '#38f9d7',
+                '#ffecd2', '#fcb69f', '#a8edea', '#fed6e3'
+            ],
+            borderWidth: 2,
+            borderColor: '#fff'
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+
+function toggleFlowTable() {
+    // Implementation for showing/hiding flow table rows
+    const table = document.querySelector('.table-responsive table tbody');
+    const rows = table.querySelectorAll('tr');
+    const button = event.target;
+    
+    if (button.textContent.includes('Show All')) {
+        rows.forEach((row, index) => {
+            if (index >= 10) {
+                row.style.display = 'table-row';
+            }
+        });
+        button.innerHTML = '<i class="fas fa-eye-slash"></i> Show Less';
+    } else {
+        rows.forEach((row, index) => {
+            if (index >= 10) {
+                row.style.display = 'none';
+            }
+        });
+        button.innerHTML = '<i class="fas fa-eye"></i> Show All Flows';
+    }
+}
+
+// Initially hide rows beyond 10
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.querySelector('.table-responsive table tbody');
+    if (table) {
+        const rows = table.querySelectorAll('tr');
+        if (rows.length > 10) {
+            rows.forEach((row, index) => {
+                if (index >= 10) {
+                    row.style.display = 'none';
+                }
+            });
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

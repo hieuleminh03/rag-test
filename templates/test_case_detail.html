@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block title %}{{ test_case.id }} - Test Case Details{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-vial"></i> {{ test_case.id }}</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <a href="{{ url_for('test_cases') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Back to List
+            </a>
+            <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                <i class="fas fa-trash"></i> Delete
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Main Test Case Information -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-info-circle"></i> Test Case Information</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-sm-3"><strong>ID:</strong></div>
+                    <div class="col-sm-9"><code>{{ test_case.id }}</code></div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-3"><strong>Purpose:</strong></div>
+                    <div class="col-sm-9">{{ test_case.purpose }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-3"><strong>Scenario:</strong></div>
+                    <div class="col-sm-9">{{ test_case.scenerio }}</div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-sm-3"><strong>Test Data:</strong></div>
+                    <div class="col-sm-9"><span class="badge bg-info">{{ test_case.test_data }}</span></div>
+                </div>
+                {% if test_case.note %}
+                <div class="row mb-3">
+                    <div class="col-sm-3"><strong>Note:</strong></div>
+                    <div class="col-sm-9">
+                        <div class="alert alert-info">
+                            <i class="fas fa-sticky-note"></i> {{ test_case.note }}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Test Steps -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-list-ol"></i> Test Steps</h5>
+            </div>
+            <div class="card-body">
+                {% if test_case.steps %}
+                <ol class="list-group list-group-numbered">
+                    {% for step in test_case.steps %}
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto">
+                            {{ step }}
+                        </div>
+                        <span class="badge bg-primary rounded-pill">{{ loop.index }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="text-muted">No test steps defined</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Expected Results -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-check-circle"></i> Expected Results</h5>
+            </div>
+            <div class="card-body">
+                {% if test_case.expected %}
+                <ol class="list-group list-group-numbered">
+                    {% for expected in test_case.expected %}
+                    <li class="list-group-item d-flex justify-content-between align-items-start">
+                        <div class="ms-2 me-auto">
+                            {{ expected }}
+                        </div>
+                        <span class="badge bg-success rounded-pill">{{ loop.index }}</span>
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}
+                <p class="text-muted">No expected results defined</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Quick Stats -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-chart-bar"></i> Quick Stats</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6 mb-3">
+                        <div class="h4 text-primary">{{ test_case.steps|length }}</div>
+                        <small class="text-muted">Test Steps</small>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <div class="h4 text-success">{{ test_case.expected|length }}</div>
+                        <small class="text-muted">Expected Results</small>
+                    </div>
+                </div>
+                <div class="text-center">
+                    <div class="h4 text-info">{{ (test_case.purpose + ' ' + test_case.scenerio + ' ' + (test_case.steps|join(' ')) + ' ' + (test_case.expected|join(' ')))|length }}</div>
+                    <small class="text-muted">Total Characters</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Case JSON -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0"><i class="fas fa-code"></i> JSON Export</h5>
+                <button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard()">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+            <div class="card-body">
+                <pre id="jsonContent" class="bg-light p-3 rounded" style="font-size: 0.8rem; max-height: 300px; overflow-y: auto;">{{ test_case | tojson(indent=2) }}</pre>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-tools"></i> Actions</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-primary" onclick="validateTestCase()">
+                        <i class="fas fa-check-double"></i> Validate
+                    </button>
+                    <button class="btn btn-outline-info" onclick="copyToClipboard()">
+                        <i class="fas fa-copy"></i> Copy JSON
+                    </button>
+                    <a href="{{ url_for('test_cases') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-list"></i> Back to List
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirm Delete</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete test case <strong>{{ test_case.id }}</strong>?</p>
+                <p class="text-muted">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="POST" action="{{ url_for('delete_test_case', case_id=test_case.id) }}" style="display: inline;">
+                    <button type="submit" class="btn btn-danger">Delete</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyToClipboard() {
+    const jsonContent = document.getElementById('jsonContent').textContent;
+    navigator.clipboard.writeText(jsonContent).then(function() {
+        // Show success message
+        const btn = event.target.closest('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        btn.classList.remove('btn-outline-secondary');
+        btn.classList.add('btn-success');
+        
+        setTimeout(function() {
+            btn.innerHTML = originalText;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-secondary');
+        }, 2000);
+    });
+}
+
+function validateTestCase() {
+    const testCase = {{ test_case | tojson }};
+    
+    fetch('/api/validate-test-case', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(testCase)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.valid) {
+            alert('✅ Test case is valid!');
+        } else {
+            alert('❌ Validation errors:\n' + data.errors.join('\n'));
+        }
+    })
+    .catch(error => {
+        alert('Error validating test case: ' + error);
+    });
+}
+</script>
+{% endblock %}

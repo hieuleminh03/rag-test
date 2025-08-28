@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+
+{% block title %}RAG Demo - Test Case Generation{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-magic"></i> RAG Demo - Test Case Generation</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadSampleAPI()">
+                <i class="fas fa-file-alt"></i> Load Sample API
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <!-- API Input -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-code"></i> API Documentation Input</h5>
+            </div>
+            <div class="card-body">
+                <form id="ragForm">
+                    <div class="mb-3">
+                        <label for="apiInput" class="form-label">Paste your API documentation here:</label>
+                        <textarea class="form-control" id="apiInput" name="api_input" rows="12" 
+                                  placeholder="Paste your API documentation (Markdown format) here...">{{ api_doc if api_doc else '' }}</textarea>
+                        <div class="form-text">
+                            <i class="fas fa-info-circle"></i> 
+                            The RAG system will analyze this documentation and generate relevant test cases based on similar patterns in the knowledge base.
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                        <button type="button" class="btn btn-outline-secondary me-md-2" onclick="clearInput()">
+                            <i class="fas fa-eraser"></i> Clear
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="generateTestCases()">
+                            <i class="fas fa-magic"></i> Generate Test Cases
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Generated Results -->
+        <div class="card" id="resultsCard" style="display: none;">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0"><i class="fas fa-list-check"></i> Generated Test Cases</h5>
+                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportResults()">
+                    <i class="fas fa-download"></i> Export
+                </button>
+            </div>
+            <div class="card-body" id="resultsContent">
+                <!-- Generated test cases will appear here -->
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div class="card" id="loadingCard" style="display: none;">
+            <div class="card-body text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-3">Analyzing API documentation and generating test cases...</p>
+                <small class="text-muted">This may take a few moments</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- RAG Process Info -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-info-circle"></i> How RAG Works</h5>
+            </div>
+            <div class="card-body">
+                <ol class="small">
+                    <li><strong>Document Analysis:</strong> Parse API documentation structure</li>
+                    <li><strong>Vector Search:</strong> Find similar test cases in knowledge base</li>
+                    <li><strong>Context Building:</strong> Combine relevant examples</li>
+                    <li><strong>LLM Generation:</strong> Generate new test cases using Gemini</li>
+                    <li><strong>Validation:</strong> Ensure generated cases follow format</li>
+                </ol>
+                
+                <div class="mt-3">
+                    <h6>Current Knowledge Base:</h6>
+                    <ul class="small">
+                        <li>14 comprehensive test cases</li>
+                        <li>Top-5 similarity retrieval</li>
+                        <li>Business logic focus</li>
+                        <li>Vietnamese + English support</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Suggestions -->
+        {% if suggestions %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-lightbulb"></i> Detected Scenarios</h5>
+            </div>
+            <div class="card-body">
+                {% for suggestion in suggestions %}
+                <div class="alert alert-{{ 'danger' if suggestion.priority == 'high' else 'warning' if suggestion.priority == 'medium' else 'info' }} py-2">
+                    <strong>{{ suggestion.category.title() }}:</strong> {{ suggestion.description }}
+                    <br><small>{{ suggestion.rationale }}</small>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Business Flows -->
+        {% if flows %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-sitemap"></i> Business Flows</h5>
+            </div>
+            <div class="card-body">
+                <div style="max-height: 300px; overflow-y: auto;">
+                    {% for flow in flows %}
+                    <div class="border-bottom py-2">
+                        <strong>Step {{ flow.step }}:</strong> {{ flow.actor }}
+                        <br><small class="text-muted">{{ flow.description[:100] }}{% if flow.description|length > 100 %}...{% endif %}</small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Sample Templates -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-file-alt"></i> Sample API Docs</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadSampleAPI()">
+                        <i class="fas fa-wallet"></i> Payment API
+                    </button>
+                    <button type="button" class="btn btn-outline-info btn-sm" onclick="loadUserAPI()">
+                        <i class="fas fa-user"></i> User Management
+                    </button>
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="loadOrderAPI()">
+                        <i class="fas fa-shopping-cart"></i> Order Processing
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function generateTestCases() {
+    const apiInput = document.getElementById('apiInput').value.trim();
+    
+    if (!apiInput) {
+        alert('Please provide API documentation');
+        return;
+    }
+    
+    // Show loading
+    document.getElementById('loadingCard').style.display = 'block';
+    document.getElementById('resultsCard').style.display = 'none';
+    
+    // Simulate API call
+    fetch('/generate-test-cases', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: 'api_input=' + encodeURIComponent(apiInput)
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('loadingCard').style.display = 'none';
+        
+        if (data.success) {
+            displayResults(data.generated_cases);
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        document.getElementById('loadingCard').style.display = 'none';
+        alert('Error generating test cases: ' + error);
+    });
+}
+
+function displayResults(testCases) {
+    const resultsContent = document.getElementById('resultsContent');
+    
+    let html = `<div class="alert alert-success">
+        <i class="fas fa-check-circle"></i> Generated ${testCases.length} test cases successfully!
+    </div>`;
+    
+    testCases.forEach((testCase, index) => {
+        html += `
+        <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-vial"></i> ${testCase.id}</h6>
+                <button class="btn btn-sm btn-outline-secondary" onclick="copyTestCase(${index})">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+            <div class="card-body">
+                <p><strong>Purpose:</strong> ${testCase.purpose}</p>
+                <p><strong>Scenario:</strong> ${testCase.scenerio}</p>
+                <p><strong>Test Data:</strong> <span class="badge bg-info">${testCase.test_data}</span></p>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Steps:</h6>
+                        <ol class="small">
+                            ${testCase.steps.map(step => `<li>${step}</li>`).join('')}
+                        </ol>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Expected:</h6>
+                        <ol class="small">
+                            ${testCase.expected.map(exp => `<li>${exp}</li>`).join('')}
+                        </ol>
+                    </div>
+                </div>
+                
+                ${testCase.note ? `<p><small class="text-muted"><i class="fas fa-sticky-note"></i> ${testCase.note}</small></p>` : ''}
+                
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-primary" onclick="addToTestCases(${index})">
+                        <i class="fas fa-plus"></i> Add to Test Cases
+                    </button>
+                </div>
+            </div>
+        </div>`;
+    });
+    
+    resultsContent.innerHTML = html;
+    document.getElementById('resultsCard').style.display = 'block';
+    
+    // Store results for export
+    window.generatedTestCases = testCases;
+}
+
+function copyTestCase(index) {
+    const testCase = window.generatedTestCases[index];
+    const jsonString = JSON.stringify(testCase, null, 2);
+    
+    navigator.clipboard.writeText(jsonString).then(() => {
+        // Show success feedback
+        const btn = event.target.closest('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        btn.classList.add('btn-success');
+        btn.classList.remove('btn-outline-secondary');
+        
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-secondary');
+        }, 2000);
+    });
+}
+
+function addToTestCases(index) {
+    const testCase = window.generatedTestCases[index];
+    
+    // In a real implementation, this would make an API call to add the test case
+    if (confirm(`Add test case "${testCase.id}" to the test case database?`)) {
+        // Simulate adding to database
+        alert('Test case would be added to the database in a real implementation');
+    }
+}
+
+function exportResults() {
+    if (!window.generatedTestCases) {
+        alert('No test cases to export');
+        return;
+    }
+    
+    const jsonString = JSON.stringify(window.generatedTestCases, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `generated_test_cases_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function clearInput() {
+    document.getElementById('apiInput').value = '';
+    document.getElementById('resultsCard').style.display = 'none';
+    document.getElementById('loadingCard').style.display = 'none';
+}
+
+function loadSampleAPI() {
+    document.getElementById('apiInput').value = `# Payment API Documentation
+
+## Overview
+This API handles automatic payment processing for outstanding loans when customers deposit money into their wallets.
+
+## Endpoints
+
+### POST /api/v1/payment/auto
+Automatically deduct outstanding loan amounts when customer deposits money.
+
+**Request:**
+- customer_id: string (required)
+- amount: number (required) 
+- wallet_id: string (required)
+
+**Response:**
+- status: success/error
+- transaction_id: string
+- deducted_amount: number
+
+## Business Flow
+1. Customer deposits money into wallet
+2. System checks for outstanding loans
+3. If loans exist, automatically deduct amounts
+4. Update loan status and wallet balance
+5. Send notifications
+
+## Error Scenarios
+- Insufficient balance
+- API timeout (30s)
+- Lender service unavailable
+- Database transaction failure`;
+}
+
+function loadUserAPI() {
+    document.getElementById('apiInput').value = `# User Management API
+
+## Overview
+Manages user registration, authentication, and profile updates.
+
+## Endpoints
+
+### POST /api/v1/users/register
+Register a new user account.
+
+### PUT /api/v1/users/profile
+Update user profile information.
+
+### DELETE /api/v1/users/{id}
+Deactivate user account.
+
+## Validation Rules
+- Email must be unique
+- Password minimum 8 characters
+- Phone number format validation
+
+## Error Handling
+- Duplicate email: 409 Conflict
+- Invalid data: 400 Bad Request
+- User not found: 404 Not Found`;
+}
+
+function loadOrderAPI() {
+    document.getElementById('apiInput').value = `# Order Processing API
+
+## Overview
+Handles order creation, payment processing, and fulfillment.
+
+## Endpoints
+
+### POST /api/v1/orders
+Create a new order.
+
+### PUT /api/v1/orders/{id}/status
+Update order status.
+
+### GET /api/v1/orders/{id}/tracking
+Get order tracking information.
+
+## Order States
+- PENDING -> CONFIRMED -> PROCESSING -> SHIPPED -> DELIVERED
+- PENDING -> CANCELLED
+
+## Integration Points
+- Payment gateway
+- Inventory system
+- Shipping providers
+- Notification service`;
+}
+</script>
+{% endblock %}
