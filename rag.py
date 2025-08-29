@@ -113,7 +113,7 @@ print("Vector store population completed.")
 
 retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
 
-llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0)
+llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite", temperature=0)
 
 class RAGGraphState(TypedDict):
     question: str

@@ -1,44 +1,53 @@
 {% extends "base.html" %}
 
-{% block title %}RAG Demo - Test Case Generation{% endblock %}
+{% block title %}RAG Generator - Tạo Test Case{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 class="h2"><i class="fas fa-magic"></i> RAG Demo - Test Case Generation</h1>
-    <div class="btn-toolbar mb-2 mb-md-0">
-        <div class="btn-group me-2">
-            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="loadSampleAPI()">
-                <i class="fas fa-file-alt"></i> Load Sample API
-            </button>
-        </div>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2><i class="fas fa-magic me-2"></i>RAG Generator</h2>
+        <p class="text-muted mb-0">Tạo Test Case tự động từ tài liệu API</p>
     </div>
+    <button type="button" class="btn btn-outline-secondary" onclick="loadSampleAPI()">
+        <i class="fas fa-file-alt me-1"></i>Tải mẫu API
+    </button>
 </div>
 
 <div class="row">
     <div class="col-lg-8">
         <!-- API Input -->
-        <div class="card mb-4">
+        <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0"><i class="fas fa-code"></i> API Documentation Input</h5>
+                <h5 class="mb-0"><i class="fas fa-code me-2"></i>Nhập tài liệu API</h5>
             </div>
             <div class="card-body">
                 <form id="ragForm">
                     <div class="mb-3">
-                        <label for="apiInput" class="form-label">Paste your API documentation here:</label>
+                        <label for="apiInput" class="form-label">Dán tài liệu API vào đây:</label>
                         <textarea class="form-control" id="apiInput" name="api_input" rows="12" 
-                                  placeholder="Paste your API documentation (Markdown format) here...">{{ api_doc if api_doc else '' }}</textarea>
-                        <div class="form-text">
-                            <i class="fas fa-info-circle"></i> 
-                            The RAG system will analyze this documentation and generate relevant test cases based on similar patterns in the knowledge base.
+                                  placeholder="Dán tài liệu API (định dạng Markdown) vào đây...">{{ api_doc if api_doc else '' }}</textarea>
+                        <div class="form-text text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            Hệ thống RAG sẽ phân tích tài liệu này và tạo Test Case dựa trên các mẫu tương tự trong cơ sở dữ liệu.
                         </div>
                     </div>
                     
-                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
-                        <button type="button" class="btn btn-outline-secondary me-md-2" onclick="clearInput()">
-                            <i class="fas fa-eraser"></i> Clear
+                    <!-- Custom Prompt Indicator -->
+                    <div id="customPromptIndicator" class="alert alert-info py-2 mb-3" style="display: none;">
+                        <i class="fas fa-edit me-1"></i>
+                        <small><strong>Đang sử dụng prompt tùy chỉnh.</strong> 
+                        <a href="#" onclick="resetToDefaultPrompt()" class="alert-link">Khôi phục mặc định</a></small>
+                    </div>
+                    
+                    <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" class="btn btn-outline-secondary" onclick="clearInput()">
+                            <i class="fas fa-eraser me-1"></i>Xóa
+                        </button>
+                        <button type="button" class="btn btn-outline-primary" onclick="reviewPrompt()" id="promptBtn">
+                            <i class="fas fa-eye me-1"></i>Xem Prompt
                         </button>
                         <button type="button" class="btn btn-primary" onclick="generateTestCases()">
-                            <i class="fas fa-magic"></i> Generate Test Cases
+                            <i class="fas fa-magic me-1"></i>Tạo Test Case
                         </button>
                     </div>
                 </form>
@@ -46,12 +55,17 @@
         </div>
 
         <!-- Generated Results -->
-        <div class="card" id="resultsCard" style="display: none;">
+        <div class="card mt-4" id="resultsCard" style="display: none;">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="card-title mb-0"><i class="fas fa-list-check"></i> Generated Test Cases</h5>
-                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportResults()">
-                    <i class="fas fa-download"></i> Export
-                </button>
+                <h5 class="mb-0"><i class="fas fa-list-check me-2"></i>Test Case đã tạo</h5>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-sm btn-outline-info" onclick="showFinalPrompt()">
+                        <i class="fas fa-eye me-1"></i>Xem Prompt đã gửi
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportResults()">
+                        <i class="fas fa-download me-1"></i>Xuất file
+                    </button>
+                </div>
             </div>
             <div class="card-body" id="resultsContent">
                 <!-- Generated test cases will appear here -->
@@ -59,39 +73,97 @@
         </div>
 
         <!-- Loading Indicator -->
-        <div class="card" id="loadingCard" style="display: none;">
-            <div class="card-body text-center">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="visually-hidden">Loading...</span>
+        <div class="card mt-4" id="loadingCard" style="display: none;">
+            <div class="card-body text-center py-5">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="visually-hidden">Đang tải...</span>
                 </div>
-                <p class="mt-3">Analyzing API documentation and generating test cases...</p>
-                <small class="text-muted">This may take a few moments</small>
+                <h6>Đang phân tích tài liệu API và tạo Test Case...</h6>
+                <small class="text-muted">Quá trình này có thể mất vài phút</small>
             </div>
         </div>
     </div>
 
     <div class="col-lg-4">
-        <!-- RAG Process Info -->
-        <div class="card mb-4">
+        <!-- RAG Status & Control -->
+        <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0"><i class="fas fa-info-circle"></i> How RAG Works</h5>
+                <h5 class="mb-0"><i class="fas fa-robot me-2"></i>Trạng thái hệ thống RAG</h5>
             </div>
             <div class="card-body">
-                <ol class="small">
-                    <li><strong>Document Analysis:</strong> Parse API documentation structure</li>
-                    <li><strong>Vector Search:</strong> Find similar test cases in knowledge base</li>
-                    <li><strong>Context Building:</strong> Combine relevant examples</li>
-                    <li><strong>LLM Generation:</strong> Generate new test cases using Gemini</li>
-                    <li><strong>Validation:</strong> Ensure generated cases follow format</li>
+                <div id="ragStatusContainer">
+                    {% if rag_status %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="small">Đã khởi tạo:</span>
+                            <span class="badge bg-{{ 'success' if rag_status.initialized else 'danger' }}">
+                                {{ 'Có' if rag_status.initialized else 'Không' }}
+                            </span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="small">Đã embedding:</span>
+                            <span class="badge bg-{{ 'success' if rag_status.embedded else 'warning' }}">
+                                {{ 'Có' if rag_status.embedded else 'Chưa' }}
+                            </span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="small">Vector Store:</span>
+                            <span class="badge bg-{{ 'success' if rag_status.vectorstore_ready else 'danger' }}">
+                                {{ 'Sẵn sàng' if rag_status.vectorstore_ready else 'Chưa sẵn sàng' }}
+                            </span>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    {% if not rag_status.embedded %}
+                    <div class="alert alert-warning py-2 mb-3">
+                        <i class="fas fa-exclamation-triangle me-1"></i>
+                        <small>Cần embedding dữ liệu để RAG hoạt động đúng cách.</small>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="d-grid gap-2">
+                        <button type="button" class="btn btn-primary" onclick="embedDocuments()" id="embedBtn">
+                            <i class="fas fa-database me-1"></i>Embedding dữ liệu
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary" onclick="refreshStatus()">
+                            <i class="fas fa-refresh me-1"></i>Làm mới trạng thái
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Embedding Progress -->
+                <div id="embeddingProgress" style="display: none;" class="mt-3">
+                    <div class="progress mb-2">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%" id="progressBar"></div>
+                    </div>
+                    <small class="text-muted" id="progressText">Đang khởi tạo...</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- RAG Process Info -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Cách thức hoạt động của RAG</h5>
+            </div>
+            <div class="card-body">
+                <ol class="small mb-3">
+                    <li><strong>Phân tích tài liệu:</strong> Phân tích cấu trúc tài liệu API</li>
+                    <li><strong>Tìm kiếm Vector:</strong> Tìm Test Case tương tự trong cơ sở dữ liệu</li>
+                    <li><strong>Xây dựng Context:</strong> Kết hợp các ví dụ liên quan</li>
+                    <li><strong>Tạo bằng LLM:</strong> Tạo Test Case mới sử dụng Gemini</li>
+                    <li><strong>Kiểm tra:</strong> Đảm bảo Test Case tuân theo định dạng</li>
                 </ol>
                 
-                <div class="mt-3">
-                    <h6>Current Knowledge Base:</h6>
-                    <ul class="small">
-                        <li>14 comprehensive test cases</li>
-                        <li>Top-5 similarity retrieval</li>
-                        <li>Business logic focus</li>
-                        <li>Vietnamese + English support</li>
+                <div class="border-top pt-3">
+                    <h6 class="mb-2">Cơ sở dữ liệu hiện tại:</h6>
+                    <ul class="small mb-0">
+                        <li>{{ total_test_cases }} Test Case toàn diện</li>
+                        <li>Tìm kiếm Top-5 tương tự</li>
+                        <li>Tập trung vào logic nghiệp vụ</li>
+                        <li>Hỗ trợ tiếng Việt + tiếng Anh</li>
                     </ul>
                 </div>
             </div>
@@ -134,22 +206,143 @@
         {% endif %}
 
         <!-- Sample Templates -->
-        <div class="card">
+        <div class="card mt-4">
             <div class="card-header">
-                <h5 class="card-title mb-0"><i class="fas fa-file-alt"></i> Sample API Docs</h5>
+                <h5 class="mb-0"><i class="fas fa-file-alt me-2"></i>Mẫu tài liệu API</h5>
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
-                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="loadSampleAPI()">
-                        <i class="fas fa-wallet"></i> Payment API
+                    <button type="button" class="btn btn-outline-primary" onclick="loadSampleAPI()">
+                        <i class="fas fa-wallet me-1"></i>Payment API
                     </button>
-                    <button type="button" class="btn btn-outline-info btn-sm" onclick="loadUserAPI()">
-                        <i class="fas fa-user"></i> User Management
+                    <button type="button" class="btn btn-outline-info" onclick="loadUserAPI()">
+                        <i class="fas fa-user me-1"></i>User Management
                     </button>
-                    <button type="button" class="btn btn-outline-success btn-sm" onclick="loadOrderAPI()">
-                        <i class="fas fa-shopping-cart"></i> Order Processing
+                    <button type="button" class="btn btn-outline-success" onclick="loadOrderAPI()">
+                        <i class="fas fa-shopping-cart me-1"></i>Order Processing
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prompt Review Modal -->
+<div class="modal fade" id="promptModal" tabindex="-1" aria-labelledby="promptModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="promptModalLabel">
+                    <i class="fas fa-eye me-2"></i>Xem và chỉnh sửa Prompt
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-1"></i>
+                    <strong>Hướng dẫn:</strong> Bạn có thể chỉnh sửa prompt để tùy chỉnh cách RAG tạo Test Case. 
+                    Các biến <code>{context}</code> và <code>{question}</code> sẽ được thay thế tự động.
+                </div>
+                
+                <div class="mb-3">
+                    <label for="promptText" class="form-label">
+                        <strong>Prompt Template:</strong>
+                    </label>
+                    <textarea class="form-control" id="promptText" rows="20" style="font-family: monospace; font-size: 12px;"></textarea>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Biến có sẵn:</h6>
+                        <ul class="small">
+                            <li><code>{context}</code> - Test Case tương tự từ database</li>
+                            <li><code>{question}</code> - Tài liệu API đầu vào</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Mẹo tùy chỉnh:</h6>
+                        <ul class="small">
+                            <li>Thay đổi số lượng Test Case cần tạo</li>
+                            <li>Điều chỉnh focus (security, performance, etc.)</li>
+                            <li>Thêm yêu cầu đặc biệt cho dự án</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" onclick="resetPrompt()">
+                    <i class="fas fa-undo me-1"></i>Khôi phục mặc định
+                </button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Hủy
+                </button>
+                <button type="button" class="btn btn-primary" onclick="savePromptAndGenerate()">
+                    <i class="fas fa-magic me-1"></i>Lưu và tạo Test Case
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Final Prompt Modal -->
+<div class="modal fade" id="finalPromptModal" tabindex="-1" aria-labelledby="finalPromptModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="finalPromptModalLabel">
+                    <i class="fas fa-eye me-2"></i>Prompt đã gửi tới LLM
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-1"></i>
+                    <strong>Thông tin:</strong> Đây là prompt cuối cùng đã được gửi tới Google Gemini, 
+                    bao gồm context từ RAG và tài liệu API của bạn.
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">
+                        <strong>Context từ RAG (Test Case tương tự):</strong>
+                    </label>
+                    <textarea class="form-control" id="contextUsed" rows="8" readonly 
+                              style="font-family: monospace; font-size: 11px; background-color: #f8f9fa;"></textarea>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">
+                        <strong>Prompt hoàn chỉnh đã gửi:</strong>
+                    </label>
+                    <textarea class="form-control" id="finalPromptContent" rows="15" readonly 
+                              style="font-family: monospace; font-size: 11px; background-color: #f8f9fa;"></textarea>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Thống kê:</h6>
+                        <ul class="small" id="promptStats">
+                            <li>Độ dài prompt: <span id="promptLength">-</span> ký tự</li>
+                            <li>Số Test Case context: <span id="contextCount">-</span></li>
+                            <li>Loại prompt: <span id="promptType">-</span></li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Ghi chú:</h6>
+                        <ul class="small">
+                            <li>Context được lấy từ vector similarity search</li>
+                            <li>Prompt được format với {context} và {question}</li>
+                            <li>LLM: Google Gemini 1.5 Pro</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" onclick="copyFinalPrompt()">
+                    <i class="fas fa-copy me-1"></i>Sao chép Prompt
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Đóng
+                </button>
             </div>
         </div>
     </div>
@@ -158,11 +351,164 @@
 
 {% block scripts %}
 <script>
-function generateTestCases() {
+// Default prompt template
+const DEFAULT_PROMPT = `You are an expert test case generator specializing in API documentation analysis and comprehensive test scenario creation.
+
+## TASK OVERVIEW
+Analyze the provided API documentation and generate detailed test cases that cover business logic flows, focusing on real-world scenarios and edge cases.
+
+## CONTEXT ANALYSIS
+Study these similar test cases to understand the expected format and coverage patterns:
+{context}
+
+## API DOCUMENTATION TO ANALYZE
+{question}
+
+## TEST CASE GENERATION REQUIREMENTS
+
+### JSON Structure (MANDATORY)
+Each test case must follow this exact structure:
+\`\`\`json
+{
+  "id": "descriptive_test_id_with_scenario",
+  "purpose": "Clear business purpose of the test",
+  "scenerio": "Specific scenario being tested with conditions",
+  "test_data": "Required data sources, DB tables, or mock data",
+  "steps": [
+    "1. Detailed step with actor and action",
+    "2. Include system interactions and API calls",
+    "3. Specify database operations and validations"
+  ],
+  "expected": [
+    "1. Expected system behavior with specific status/values",
+    "2. Database state changes with table and field details",
+    "3. API response format and error codes if applicable"
+  ],
+  "note": "API references, business rules, or technical constraints"
+}
+\`\`\`
+
+### COVERAGE AREAS (Generate test cases for each applicable area)
+
+1. **Happy Path Scenarios**
+   - Normal business flow execution
+   - Successful API integrations
+   - Proper database updates
+
+2. **Error Handling & Edge Cases**
+   - API timeouts and connection failures
+   - Invalid input data and validation errors
+   - System unavailability and maintenance modes
+   - Insufficient resources (balance, quota, etc.)
+
+3. **Business Logic Validation**
+   - Conditional flows and decision points
+   - Data transformation and calculations
+   - State transitions and status updates
+   - Multi-step process validation
+
+4. **Integration & Concurrency**
+   - External system communication
+   - Database transaction consistency
+   - Concurrent request handling
+   - Race condition prevention
+
+5. **Data Consistency & Rollback**
+   - Transaction rollback scenarios
+   - Data integrity validation
+   - Cross-table consistency checks
+   - Audit trail verification
+
+### NAMING CONVENTIONS
+- IDs: Use format "category-scenario_number" (e.g., "payment-timeout_1", "validation-invalid-product_1")
+- Be descriptive and specific about the scenario being tested
+
+### TECHNICAL DETAILS TO INCLUDE
+- Specific database tables and fields
+- API endpoint references and versions
+- Status codes and error messages
+- Timing constraints and timeouts
+- Configuration dependencies (CMS, etc.)
+
+## OUTPUT REQUIREMENTS
+Generate 5-8 comprehensive test cases covering different aspects of the API documentation. Ensure each test case is:
+- **Specific**: Clear scenario with exact conditions
+- **Actionable**: Detailed steps that can be executed
+- **Verifiable**: Measurable expected outcomes
+- **Realistic**: Based on actual business requirements
+
+Focus on business logic testing, not basic validation. Each test should represent a meaningful user journey or system interaction.
+
+## GENERATED TEST CASES:`;
+
+// Store current prompt
+let currentPrompt = DEFAULT_PROMPT;
+
+function reviewPrompt() {
     const apiInput = document.getElementById('apiInput').value.trim();
     
     if (!apiInput) {
-        alert('Please provide API documentation');
+        alert('Vui lòng nhập tài liệu API trước khi xem prompt');
+        return;
+    }
+    
+    // Load current prompt into modal
+    document.getElementById('promptText').value = currentPrompt;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('promptModal'));
+    modal.show();
+}
+
+function resetPrompt() {
+    document.getElementById('promptText').value = DEFAULT_PROMPT;
+    currentPrompt = DEFAULT_PROMPT;
+}
+
+function savePromptAndGenerate() {
+    // Save the edited prompt
+    currentPrompt = document.getElementById('promptText').value;
+    
+    // Update UI to show custom prompt is being used
+    updatePromptIndicator();
+    
+    // Close modal
+    const modal = bootstrap.Modal.getInstance(document.getElementById('promptModal'));
+    modal.hide();
+    
+    // Generate test cases with custom prompt
+    generateTestCases(true);
+}
+
+function resetToDefaultPrompt() {
+    currentPrompt = DEFAULT_PROMPT;
+    updatePromptIndicator();
+}
+
+function updatePromptIndicator() {
+    const indicator = document.getElementById('customPromptIndicator');
+    const promptBtn = document.getElementById('promptBtn');
+    
+    if (currentPrompt !== DEFAULT_PROMPT) {
+        // Show custom prompt indicator
+        indicator.style.display = 'block';
+        promptBtn.innerHTML = '<i class="fas fa-edit me-1"></i>Chỉnh sửa Prompt';
+        promptBtn.classList.remove('btn-outline-primary');
+        promptBtn.classList.add('btn-warning');
+    } else {
+        // Hide indicator and reset button
+        indicator.style.display = 'none';
+        promptBtn.innerHTML = '<i class="fas fa-eye me-1"></i>Xem Prompt';
+        promptBtn.classList.remove('btn-warning');
+        promptBtn.classList.add('btn-outline-primary');
+    }
+}
+
+function generateTestCases(useCustomPrompt = false) {
+    const apiInput = document.getElementById('apiInput').value.trim();
+    
+    if (!apiInput) {
+        alert('Vui lòng nhập tài liệu API');
         return;
     }
     
@@ -170,71 +516,78 @@ function generateTestCases() {
     document.getElementById('loadingCard').style.display = 'block';
     document.getElementById('resultsCard').style.display = 'none';
     
-    // Simulate API call
+    // Prepare request data
+    let requestData = 'api_input=' + encodeURIComponent(apiInput);
+    if (useCustomPrompt) {
+        requestData += '&custom_prompt=' + encodeURIComponent(currentPrompt);
+    }
+    
+    // API call
     fetch('/generate-test-cases', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: 'api_input=' + encodeURIComponent(apiInput)
+        body: requestData
     })
     .then(response => response.json())
     .then(data => {
         document.getElementById('loadingCard').style.display = 'none';
         
         if (data.success) {
-            displayResults(data.generated_cases);
+            displayResults(data.generated_cases, data);
         } else {
-            alert('Error: ' + data.error);
+            alert('Lỗi: ' + data.error);
         }
     })
     .catch(error => {
         document.getElementById('loadingCard').style.display = 'none';
-        alert('Error generating test cases: ' + error);
+        alert('Lỗi khi tạo Test Case: ' + error);
     });
 }
 
-function displayResults(testCases) {
+function displayResults(testCases, data = {}) {
     const resultsContent = document.getElementById('resultsContent');
     
     let html = `<div class="alert alert-success">
-        <i class="fas fa-check-circle"></i> Generated ${testCases.length} test cases successfully!
+        <i class="fas fa-check-circle me-1"></i>Đã tạo thành công ${testCases.length} Test Case!
+        ${data.used_custom_prompt ? '<br><small><i class="fas fa-edit me-1"></i>Sử dụng prompt tùy chỉnh</small>' : ''}
     </div>`;
     
     testCases.forEach((testCase, index) => {
         html += `
         <div class="card mb-3">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h6 class="mb-0"><i class="fas fa-vial"></i> ${testCase.id}</h6>
+                <h6 class="mb-0"><i class="fas fa-vial me-1"></i>${testCase.id}</h6>
                 <button class="btn btn-sm btn-outline-secondary" onclick="copyTestCase(${index})">
-                    <i class="fas fa-copy"></i> Copy
+                    <i class="fas fa-copy me-1"></i>Sao chép
                 </button>
             </div>
             <div class="card-body">
-                <p><strong>Purpose:</strong> ${testCase.purpose}</p>
-                <p><strong>Scenario:</strong> ${testCase.scenerio}</p>
-                <p><strong>Test Data:</strong> <span class="badge bg-info">${testCase.test_data}</span></p>
+                <p><strong>Mục đích:</strong> ${testCase.purpose}</p>
+                <p><strong>Kịch bản:</strong> ${testCase.scenerio}</p>
+                <p><strong>Dữ liệu test:</strong> <span class="badge bg-info">${testCase.test_data}</span></p>
                 
                 <div class="row">
                     <div class="col-md-6">
-                        <h6>Steps:</h6>
+                        <h6>Các bước:</h6>
                         <ol class="small">
                             ${testCase.steps.map(step => `<li>${step}</li>`).join('')}
                         </ol>
                     </div>
                     <div class="col-md-6">
-                        <h6>Expected:</h6>
+                        <h6>Kết quả mong đợi:</h6>
                         <ol class="small">
                             ${testCase.expected.map(exp => `<li>${exp}</li>`).join('')}
                         </ol>
                     </div>
                 </div>
                 
-                ${testCase.note ? `<p><small class="text-muted"><i class="fas fa-sticky-note"></i> ${testCase.note}</small></p>` : ''}
+                ${testCase.note ? `<p><small class="text-muted"><i class="fas fa-sticky-note me-1"></i>${testCase.note}</small></p>` : ''}
                 
                 <div class="mt-2">
                     <button class="btn btn-sm btn-primary" onclick="addToTestCases(${index})">
-                        <i class="fas fa-plus"></i> Add to Test Cases
+                        <i class="fas fa-plus me-1"></i>Thêm vào danh sách
                     </button>
                 </div>
             </div>
@@ -246,6 +599,7 @@ function displayResults(testCases) {
     
     // Store results for export
     window.generatedTestCases = testCases;
+    window.lastGenerationData = data;
 }
 
 function copyTestCase(index) {
@@ -256,7 +610,7 @@ function copyTestCase(index) {
         // Show success feedback
         const btn = event.target.closest('button');
         const originalText = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        btn.innerHTML = '<i class="fas fa-check me-1"></i>Đã sao chép!';
         btn.classList.add('btn-success');
         btn.classList.remove('btn-outline-secondary');
         
@@ -272,15 +626,15 @@ function addToTestCases(index) {
     const testCase = window.generatedTestCases[index];
     
     // In a real implementation, this would make an API call to add the test case
-    if (confirm(`Add test case "${testCase.id}" to the test case database?`)) {
+    if (confirm(`Thêm Test Case "${testCase.id}" vào cơ sở dữ liệu?`)) {
         // Simulate adding to database
-        alert('Test case would be added to the database in a real implementation');
+        alert('Test Case sẽ được thêm vào cơ sở dữ liệu trong phiên bản thực tế');
     }
 }
 
 function exportResults() {
     if (!window.generatedTestCases) {
-        alert('No test cases to export');
+        alert('Không có Test Case nào để xuất');
         return;
     }
     
@@ -295,6 +649,58 @@ function exportResults() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+function showFinalPrompt() {
+    if (!window.lastGenerationData || !window.lastGenerationData.final_prompt) {
+        alert('Không có thông tin prompt. Vui lòng tạo Test Case trước.');
+        return;
+    }
+    
+    const data = window.lastGenerationData;
+    
+    // Populate modal content
+    document.getElementById('contextUsed').value = data.context_used || 'Không có context';
+    document.getElementById('finalPromptContent').value = data.final_prompt || 'Không có prompt';
+    
+    // Update statistics
+    const promptLength = (data.final_prompt || '').length;
+    const contextLines = (data.context_used || '').split('\n').length;
+    const promptType = data.used_custom_prompt ? 'Tùy chỉnh' : 'Mặc định';
+    
+    document.getElementById('promptLength').textContent = promptLength.toLocaleString();
+    document.getElementById('contextCount').textContent = Math.floor(contextLines / 10); // Rough estimate
+    document.getElementById('promptType').textContent = promptType;
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('finalPromptModal'));
+    modal.show();
+}
+
+function copyFinalPrompt() {
+    const promptContent = document.getElementById('finalPromptContent').value;
+    
+    if (!promptContent) {
+        alert('Không có prompt để sao chép');
+        return;
+    }
+    
+    navigator.clipboard.writeText(promptContent).then(() => {
+        // Show success feedback
+        const btn = event.target.closest('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check me-1"></i>Đã sao chép!';
+        btn.classList.add('btn-success');
+        btn.classList.remove('btn-outline-secondary');
+        
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-secondary');
+        }, 2000);
+    }).catch(() => {
+        alert('Không thể sao chép. Vui lòng chọn và copy thủ công.');
+    });
 }
 
 function clearInput() {
@@ -392,6 +798,121 @@ Get order tracking information.
 - Inventory system
 - Shipping providers
 - Notification service`;
+}
+
+function embedDocuments() {
+    const embedBtn = document.getElementById('embedBtn');
+    const progressContainer = document.getElementById('embeddingProgress');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    
+    // Disable button and show progress
+    embedBtn.disabled = true;
+    embedBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Đang embedding...';
+    progressContainer.style.display = 'block';
+    progressBar.style.width = '10%';
+    progressText.textContent = 'Bắt đầu quá trình embedding...';
+    
+    fetch('/embed-documents', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Simulate progress completion
+            progressBar.style.width = '100%';
+            progressText.textContent = data.message || 'Embedding hoàn thành thành công!';
+            
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+                embedBtn.disabled = false;
+                embedBtn.innerHTML = '<i class="fas fa-database me-1"></i>Embedding dữ liệu';
+                
+                // Refresh status
+                refreshStatus();
+                
+                // Show success message
+                alert('Embedding dữ liệu thành công! Bây giờ bạn có thể sử dụng RAG generator.');
+            }, 2000);
+        } else {
+            progressContainer.style.display = 'none';
+            embedBtn.disabled = false;
+            embedBtn.innerHTML = '<i class="fas fa-database me-1"></i>Embedding dữ liệu';
+            alert('Lỗi khi embedding dữ liệu: ' + data.error);
+        }
+    })
+    .catch(error => {
+        progressContainer.style.display = 'none';
+        embedBtn.disabled = false;
+        embedBtn.innerHTML = '<i class="fas fa-database me-1"></i>Embedding dữ liệu';
+        alert('Lỗi khi embedding dữ liệu: ' + error);
+    });
+}
+
+function refreshStatus() {
+    fetch('/rag-status')
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            updateStatusDisplay(data.status);
+        } else {
+            console.error('Error getting RAG status:', data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error getting RAG status:', error);
+    });
+}
+
+function updateStatusDisplay(status) {
+    const container = document.getElementById('ragStatusContainer');
+    
+    const statusHtml = `
+        <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small">Đã khởi tạo:</span>
+                <span class="badge bg-${status.initialized ? 'success' : 'danger'}">
+                    ${status.initialized ? 'Có' : 'Không'}
+                </span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small">Đã embedding:</span>
+                <span class="badge bg-${status.embedded ? 'success' : 'warning'}">
+                    ${status.embedded ? 'Có' : 'Chưa'}
+                </span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="small">Vector Store:</span>
+                <span class="badge bg-${status.vectorstore_ready ? 'success' : 'danger'}">
+                    ${status.vectorstore_ready ? 'Sẵn sàng' : 'Chưa sẵn sàng'}
+                </span>
+            </div>
+        </div>
+        
+        ${!status.embedded ? `
+        <div class="alert alert-warning py-2 mb-3">
+            <i class="fas fa-exclamation-triangle me-1"></i>
+            <small>Cần embedding dữ liệu để RAG hoạt động đúng cách.</small>
+        </div>
+        ` : ''}
+        
+        <div class="d-grid gap-2">
+            <button type="button" class="btn btn-primary" onclick="embedDocuments()" id="embedBtn">
+                <i class="fas fa-database me-1"></i>Embedding dữ liệu
+            </button>
+            <button type="button" class="btn btn-outline-secondary" onclick="refreshStatus()">
+                <i class="fas fa-refresh me-1"></i>Làm mới trạng thái
+            </button>
+        </div>
+    `;
+    
+    // Update only the status part, preserve the progress container
+    const progressContainer = document.getElementById('embeddingProgress');
+    container.innerHTML = statusHtml;
+    container.appendChild(progressContainer);
 }
 </script>
 {% endblock %}

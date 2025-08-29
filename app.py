@@ -21,6 +21,7 @@ from services import (
 from utils import ErrorHandler, setup_logging
 from models import TestCase
 from excel_processor import ExcelProcessor, analyze_excel_structure
+from rag_service import RAGService
 
 # Setup logging
 setup_logging()
@@ -43,10 +44,11 @@ def create_app(config_name: str = 'default') -> Flask:
     coverage_service = CoverageAnalysisService(test_case_service, api_doc_service)
     export_service = ExportService(test_case_service)
     excel_processor = ExcelProcessor()
+    rag_service = RAGService()
     
-    return app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor
+    return app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor, rag_service
 
-app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor = create_app()
+app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor, rag_service = create_app()
 
 # Global storage for uploaded files (in production, use Redis or database)
 uploaded_files = {}
@@ -160,6 +162,10 @@ def delete_test_case(case_id):
 def rag_demo():
     """RAG demonstration page"""
     try:
+        # Initialize RAG service if not already done
+        if not rag_service.is_initialized:
+            rag_service.initialize()
+        
         # Load API documentation
         api_doc = api_doc_service.load_api_documentation()
         
@@ -169,70 +175,119 @@ def rag_demo():
         # Get existing test cases for context
         test_cases = test_case_service.get_all_test_cases()
         
+        # Get RAG service status
+        rag_status = rag_service.get_status()
+        
         return render_template('rag_demo.html', 
                              api_doc=api_doc[:2000] + "..." if len(api_doc) > 2000 else api_doc,
                              flows=flows[:10],  # Show first 10 flows
-                             total_test_cases=len(test_cases))
+                             total_test_cases=len(test_cases),
+                             rag_status=rag_status)
     except Exception as e:
         logger.error(f"Error loading RAG demo: {e}")
         flash(f"Error loading RAG demo: {str(e)}", 'error')
-        return render_template('rag_demo.html', api_doc="", flows=[], total_test_cases=0)
+        return render_template('rag_demo.html', api_doc="", flows=[], total_test_cases=0, rag_status={})
 
 @app.route('/generate-test-cases', methods=['POST'])
 def generate_test_cases():
     """Generate test cases using RAG analysis"""
     try:
         api_input = request.form.get('api_input', '').strip()
+        custom_prompt = request.form.get('custom_prompt', '').strip()
         
         if not api_input:
             return jsonify(ErrorHandler.handle_validation_error(['API documentation is required'])), 400
         
-        # Analyze the input and suggest test cases based on existing patterns
-        flows = api_doc_service.extract_business_flows(api_input)
-        existing_test_cases = test_case_service.get_all_test_cases()
+        # Initialize RAG service if not already done
+        if not rag_service.is_initialized:
+            if not rag_service.initialize():
+                return jsonify({'success': False, 'error': 'Failed to initialize RAG service'}), 500
         
-        # Generate suggestions based on analysis
-        suggestions = []
+        # Use RAG service to generate test cases with optional custom prompt
+        result = rag_service.generate_test_cases(api_input, custom_prompt if custom_prompt else None)
         
-        # Analyze API input for common patterns
-        api_lower = api_input.lower()
-        
-        if 'payment' in api_lower or 'thanh toán' in api_lower:
-            suggestions.append({
-                'id': 'payment-success_generated',
-                'purpose': 'Kiểm tra thanh toán thành công',
-                'scenerio': 'TH API thanh toán được gọi với dữ liệu hợp lệ',
-                'test_data': 'Valid payment request data',
-                'steps': ['1. Gửi request thanh toán', '2. Xử lý thanh toán', '3. Trả về kết quả'],
-                'expected': ['1. Status code 200', '2. Transaction ID được tạo', '3. Database được cập nhật'],
-                'note': 'Generated from payment API analysis'
+        if result['success']:
+            return jsonify(result)
+        else:
+            # Fallback to simple analysis if RAG fails
+            logger.warning(f"RAG generation failed: {result.get('error')}. Using fallback.")
+            
+            flows = api_doc_service.extract_business_flows(api_input)
+            existing_test_cases = test_case_service.get_all_test_cases()
+            
+            # Generate simple suggestions based on analysis
+            suggestions = []
+            api_lower = api_input.lower()
+            
+            if 'payment' in api_lower or 'thanh toán' in api_lower:
+                suggestions.append({
+                    'id': 'payment-success_generated',
+                    'purpose': 'Kiểm tra thanh toán thành công',
+                    'scenerio': 'TH API thanh toán được gọi với dữ liệu hợp lệ',
+                    'test_data': 'Valid payment request data',
+                    'steps': ['1. Gửi request thanh toán', '2. Xử lý thanh toán', '3. Trả về kết quả'],
+                    'expected': ['1. Status code 200', '2. Transaction ID được tạo', '3. Database được cập nhật'],
+                    'note': 'Generated from payment API analysis (fallback)'
+                })
+            
+            if 'error' in api_lower or 'timeout' in api_lower:
+                suggestions.append({
+                    'id': 'error-handling_generated',
+                    'purpose': 'Kiểm tra xử lý lỗi',
+                    'scenerio': 'TH API trả về lỗi hoặc timeout',
+                    'test_data': 'Error scenario data',
+                    'steps': ['1. Gửi request không hợp lệ', '2. API xử lý lỗi', '3. Trả về error response'],
+                    'expected': ['1. Error code được trả về', '2. Error message rõ ràng', '3. Log được ghi'],
+                    'note': 'Generated from error handling analysis (fallback)'
+                })
+            
+            return jsonify({
+                'success': True,
+                'generated_cases': suggestions,
+                'message': f'Used fallback analysis. RAG error: {result.get("error")}',
+                'analysis': {
+                    'flows_found': len(flows),
+                    'existing_cases': len(existing_test_cases),
+                    'patterns_detected': len(suggestions),
+                    'rag_error': result.get('error')
+                }
             })
-        
-        if 'error' in api_lower or 'timeout' in api_lower:
-            suggestions.append({
-                'id': 'error-handling_generated',
-                'purpose': 'Kiểm tra xử lý lỗi',
-                'scenerio': 'TH API trả về lỗi hoặc timeout',
-                'test_data': 'Error scenario data',
-                'steps': ['1. Gửi request không hợp lệ', '2. API xử lý lỗi', '3. Trả về error response'],
-                'expected': ['1. Error code được trả về', '2. Error message rõ ràng', '3. Log được ghi'],
-                'note': 'Generated from error handling analysis'
-            })
-        
-        return jsonify({
-            'success': True,
-            'generated_cases': suggestions,
-            'message': f'Analyzed API documentation and suggested {len(suggestions)} test cases',
-            'analysis': {
-                'flows_found': len(flows),
-                'existing_cases': len(existing_test_cases),
-                'patterns_detected': len(suggestions)
-            }
-        })
         
     except Exception as e:
         logger.error(f"Error generating test cases: {e}")
         return jsonify(ErrorHandler.handle_generic_error(e)), 500
+
+@app.route('/embed-documents', methods=['POST'])
+def embed_documents():
+    """Embed test case documents into vector store"""
+    try:
+        # Initialize RAG service if not already done
+        if not rag_service.is_initialized:
+            if not rag_service.initialize():
+                return jsonify({'success': False, 'error': 'Failed to initialize RAG service'}), 500
+        
+        # Start embedding process
+        result = rag_service.embed_documents()
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error embedding documents: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/rag-status')
+def rag_status():
+    """Get RAG service status"""
+    try:
+        if not rag_service.is_initialized:
+            rag_service.initialize()
+        
+        status = rag_service.get_status()
+        return jsonify({'success': True, 'status': status})
+        
+    except Exception as e:
+        logger.error(f"Error getting RAG status: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/coverage-analysis')
