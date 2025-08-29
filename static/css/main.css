@@ -1,0 +1,278 @@
+/* Main CSS file with optimized styling */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f5f6fa;
+}
+
+/* Navbar styling */
+.navbar {
+    background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    border-bottom: 1px solid #1a252f;
+    backdrop-filter: blur(10px);
+}
+
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.25rem;
+    color: #ecf0f1 !important;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.navbar-brand:hover {
+    color: #3498db !important;
+    transform: scale(1.05);
+}
+
+.navbar-brand i {
+    color: #3498db;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.navbar-brand .brand-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.navbar-dark .navbar-nav .nav-link {
+    color: #ecf0f1;
+    padding: 12px 16px;
+    transition: all 0.3s ease;
+    border-radius: 6px;
+    margin: 0 2px;
+    position: relative;
+    overflow: hidden;
+}
+
+.navbar-dark .navbar-nav .nav-link::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(52, 152, 219, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.navbar-dark .navbar-nav .nav-link:hover::before,
+.navbar-dark .navbar-nav .nav-link.active::before {
+    left: 100%;
+}
+
+.navbar-dark .navbar-nav .nav-link:hover,
+.navbar-dark .navbar-nav .nav-link.active {
+    color: white;
+    background-color: rgba(52, 152, 219, 0.1);
+    border-radius: 6px;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.navbar-dark .navbar-nav .nav-link i {
+    width: 20px;
+    margin-right: 8px;
+    transition: transform 0.3s ease;
+}
+
+.navbar-dark .navbar-nav .nav-link:hover i {
+    transform: scale(1.1);
+}
+
+.navbar-toggler {
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 8px 12px;
+    transition: all 0.3s ease;
+}
+
+.navbar-toggler:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.05);
+}
+
+.navbar-toggler-icon {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28236, 240, 241, 0.8%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='m4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
+/* Export button styling */
+.btn-outline-light {
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #ecf0f1;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 6px;
+    padding: 8px 16px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.btn-outline-light:hover {
+    background: rgba(52, 152, 219, 0.2);
+    border-color: #3498db;
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn-outline-light i {
+    margin-right: 6px;
+}
+
+/* Version indicator */
+.navbar .text-light small {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-weight: 500;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+
+/* Responsive improvements */
+@media (max-width: 991.98px) {
+    .navbar-nav {
+        margin-top: 10px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        padding-top: 10px;
+    }
+
+    .navbar-nav .nav-link {
+        padding: 10px 12px;
+        margin: 2px 0;
+    }
+
+    .navbar-collapse {
+        background: rgba(44, 62, 80, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 8px;
+        margin-top: 10px;
+        padding: 10px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+}
+
+@media (max-width: 575.98px) {
+    .navbar-brand {
+        font-size: 1.1rem;
+        flex-wrap: nowrap;
+        min-width: 0;
+    }
+
+    .btn-outline-light {
+        padding: 6px 12px;
+        font-size: 0.875rem;
+    }
+
+
+    .navbar .text-light small {
+        display: none;
+    }
+}
+
+/* Smooth animations */
+.navbar-collapse {
+    transition: all 0.3s ease-in-out;
+}
+
+/* Active page indicator */
+.navbar-dark .navbar-nav .nav-link.active {
+    background: linear-gradient(135deg, #3498db, #2980b9);
+    box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3);
+}
+
+/* Main content area */
+.main-content {
+    background-color: #f5f6fa;
+    min-height: calc(100vh - 60px);
+    padding: 20px;
+}
+
+/* Card styling */
+.card {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid #e9ecef;
+    padding: 15px 20px;
+}
+
+.card-body {
+    padding: 20px;
+}
+
+/* Button styling */
+.btn-primary {
+    background-color: #3498db;
+    border-color: #3498db;
+    padding: 8px 16px;
+    border-radius: 6px;
+}
+
+.btn-primary:hover {
+    background-color: #2980b9;
+    border-color: #2980b9;
+}
+
+.btn-outline-secondary {
+    border-color: #95a5a6;
+    color: #7f8c8d;
+}
+
+.btn-outline-secondary:hover {
+    background-color: #95a5a6;
+    border-color: #95a5a6;
+}
+
+/* Form elements */
+.form-control,
+.form-select {
+    border-radius: 6px;
+    border: 1px solid #ddd;
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 0.2rem rgba(52, 152, 219, 0.25);
+}
+
+/* Utility styles */
+.badge {
+    padding: 6px 10px;
+    border-radius: 4px;
+}
+
+.alert {
+    border-radius: 6px;
+    border: none;
+}
+
+.progress {
+    height: 8px;
+    border-radius: 4px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: #2c3e50;
+}
+
+.text-muted {
+    color: #7f8c8d !important;
+}

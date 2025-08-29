@@ -147,6 +147,15 @@ class JSONDatabaseManager:
             logger.error(f"Error getting all test cases: {e}")
             return []
     
+    def get_test_cases_count(self) -> int:
+        """Get total count of test cases (optimized - no object creation)"""
+        try:
+            data = self._load_data()
+            return len(data)
+        except Exception as e:
+            logger.error(f"Error getting test cases count: {e}")
+            return 0
+    
     def search_test_cases(self, query: str) -> List[TestCase]:
         """Search test cases by text content"""
         try:

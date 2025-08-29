@@ -128,42 +128,14 @@ def get_cached_test_cases_count():
         current_time - _cache['test_cases_count']['timestamp'] < CACHE_TIMEOUT):
         return _cache['test_cases_count']['count']
 
-    # Get fresh count using optimized method
+    # Get fresh count
     try:
-        count = test_case_service.get_test_cases_count()
+        count = len(test_case_service.get_all_test_cases())
         _cache['test_cases_count'] = {'count': count, 'timestamp': current_time}
         return count
     except Exception as e:
         logger.warning(f"Error getting test cases count: {e}")
         return 0
-def invalidate_cache(cache_key=None):
-    """Invalidate cache entries"""
-    import time
-    current_time = time.time()
-    
-    if cache_key:
-        if cache_key in _cache:
-            _cache[cache_key] = {'content': None, 'timestamp': 0}
-            logger.info(f"Invalidated cache for {cache_key}")
-    else:
-        # Invalidate all caches
-        for key in _cache:
-            _cache[key] = {'content': None, 'timestamp': 0}
-        logger.info("Invalidated all caches")
-
-# Add cache invalidation endpoint
-@app.route('/api/invalidate-cache', methods=['POST'])
-def api_invalidate_cache():
-    """Invalidate cache entries"""
-    try:
-        data = request.json or {}
-        cache_key = data.get('cache_key')
-        invalidate_cache(cache_key)
-        return jsonify({'success': True, 'message': f'Cache invalidated for {cache_key or "all"}'})
-    except Exception as e:
-        logger.error(f"Error invalidating cache: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/')
 def index():
@@ -254,22 +226,26 @@ def delete_test_case(case_id):
 def rag_demo():
     """RAG demonstration page"""
     try:
-        # Load API documentation with caching
-        api_doc = get_cached_api_doc()
+        # Initialize RAG service if not already done
+        if not rag_service.is_initialized:
+            rag_service.initialize()
         
-        # Extract business flows for display (limit processing)
+        # Load API documentation
+        api_doc = api_doc_service.load_api_documentation()
+        
+        # Extract business flows for display
         flows = api_doc_service.extract_business_flows(api_doc) if api_doc else []
         
-        # Get cached test cases count instead of loading all test cases
-        total_test_cases = get_cached_test_cases_count()
+        # Get existing test cases for context
+        test_cases = test_case_service.get_all_test_cases()
         
-        # Get cached RAG status (avoids expensive similarity search)
-        rag_status = get_cached_rag_status()
+        # Get RAG service status
+        rag_status = rag_service.get_status()
         
         return render_template('rag_demo.html', 
-                             api_doc=api_doc[:2000] + "..." if len(api_doc or "") > 2000 else (api_doc or ""),
+                             api_doc=api_doc[:2000] + "..." if len(api_doc) > 2000 else api_doc,
                              flows=flows[:10],  # Show first 10 flows
-                             total_test_cases=total_test_cases,
+                             total_test_cases=len(test_cases),
                              rag_status=rag_status)
     except Exception as e:
         logger.error(f"Error loading RAG demo: {e}")
@@ -367,8 +343,10 @@ def embed_documents():
 def rag_status():
     """Get RAG service status"""
     try:
-        # Use cached status to avoid expensive operations
-        status = get_cached_rag_status()
+        if not rag_service.is_initialized:
+            rag_service.initialize()
+        
+        status = rag_service.get_status()
         return jsonify({'success': True, 'status': status})
         
     except Exception as e:
@@ -980,28 +958,6 @@ def api_extract_test_cases_template():
         logger.error(f"Error in template test case extraction: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-@app.route('/api/business-flows')
-def api_business_flows():
-    """Get business flows asynchronously"""
-    try:
-        # Use cached API documentation
-        api_doc = get_cached_api_doc()
-        
-        if not api_doc:
-            return jsonify({'success': False, 'flows': []})
-        
-        # Extract business flows
-        flows = api_doc_service.extract_business_flows(api_doc) if api_doc else []
-        
-        return jsonify({
-            'success': True,
-            'flows': flows[:10],  # Limit to first 10 flows
-            'total': len(flows)
-        })
-    except Exception as e:
-        logger.error(f"Error getting business flows: {e}")
-        return jsonify({'success': False, 'error': str(e), 'flows': []}), 500
 @app.errorhandler(404)
 def not_found(error):
     return render_template('404.html'), 404

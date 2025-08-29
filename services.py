@@ -49,6 +49,9 @@ class TestCaseService:
     def get_all_test_cases(self) -> List[TestCase]:
         """Get all test cases"""
         return self.db.get_all_test_cases()
+    def get_test_cases_count(self) -> int:
+        """Get total count of test cases (optimized - no data loading)"""
+        return self.db.get_test_cases_count()
     
     def get_test_case_by_id(self, case_id: str) -> Optional[TestCase]:
         """Get test case by ID (first match for backward compatibility)"""

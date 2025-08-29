@@ -129,6 +129,9 @@
                         <button type="button" class="btn btn-outline-secondary" onclick="refreshStatus()">
                             <i class="fas fa-refresh me-1"></i>Làm mới trạng thái
                         </button>
+                        <button type="button" class="btn btn-outline-info" onclick="refreshAllCaches()">
+                            <i class="fas fa-sync-alt me-1"></i>Làm mới cache
+                        </button>
                     </div>
                 </div>
                 
@@ -913,6 +916,90 @@ function updateStatusDisplay(status) {
     const progressContainer = document.getElementById('embeddingProgress');
     container.innerHTML = statusHtml;
     container.appendChild(progressContainer);
+}
+
+// Async loading improvements
+document.addEventListener('DOMContentLoaded', function() {
+    // Load non-critical components asynchronously
+    setTimeout(() => {
+        loadBusinessFlowsAsync();
+        loadSampleTemplatesAsync();
+    }, 100);
+});
+
+function loadBusinessFlowsAsync() {
+    // Load business flows asynchronously if not already loaded
+    const flowsContainer = document.querySelector('.card-body .border-bottom');
+    if (!flowsContainer) {
+        fetch('/api/business-flows')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.flows.length > 0) {
+                    updateFlowsDisplay(data.flows);
+                }
+            })
+            .catch(error => console.log('Async flows loading failed:', error));
+    }
+}
+
+function loadSampleTemplatesAsync() {
+    // Pre-load sample templates
+    const sampleButtons = document.querySelectorAll('[onclick*="loadSample"]');
+    sampleButtons.forEach(button => {
+        button.addEventListener('mouseenter', function() {
+            // Pre-load content on hover for better UX
+            const methodName = this.getAttribute('onclick').match(/load(\w+)API/);
+            if (methodName && methodName[1]) {
+                // Could implement pre-loading here
+            }
+        });
+    });
+}
+
+function updateFlowsDisplay(flows) {
+    const container = document.querySelector('.card-body');
+    if (container && flows.length > 0) {
+        let html = '';
+        flows.slice(0, 10).forEach(flow => {
+            html += `
+            <div class="border-bottom py-2">
+                <strong>Step ${flow.step}:</strong> ${flow.actor}
+                <br><small class="text-muted">${flow.description ? flow.description.substring(0, 100) + '...' : ''}</small>
+            </div>`;
+        });
+        container.innerHTML = '<div style="max-height: 300px; overflow-y: auto;">" + html + "</div>';
+    }
+}
+
+// Improved loading indicators
+function showLoadingState(message = 'Đang xử lý...') {
+    const loadingCard = document.getElementById('loadingCard');
+    const loadingText = loadingCard.querySelector('h6');
+    loadingText.textContent = message;
+    loadingCard.style.display = 'block';
+}
+
+function hideLoadingState() {
+    document.getElementById('loadingCard').style.display = 'none';
+}
+
+// Cache refresh functionality
+function refreshAllCaches() {
+    fetch('/api/invalidate-cache', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Refresh the page data
+            location.reload();
+        }
+    })
+    .catch(error => console.error('Cache refresh failed:', error));
 }
 </script>
 {% endblock %}
