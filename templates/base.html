@@ -83,6 +83,11 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'test_case_manager' %}active{% endif %}" href="{{ url_for('test_case_manager') }}">
+                                <i class="fas fa-database"></i> Quản lý Test Cases
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link {% if request.endpoint == 'add_test_case' %}active{% endif %}" href="{{ url_for('add_test_case') }}">
                                 <i class="fas fa-plus"></i> Thêm Test Case
                             </a>
@@ -95,6 +100,11 @@
                         <li class="nav-item">
                             <a class="nav-link {% if request.endpoint == 'coverage_analysis' %}active{% endif %}" href="{{ url_for('coverage_analysis') }}">
                                 <i class="fas fa-chart-line"></i> Phân tích Coverage
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.endpoint == 'data_cleaning' %}active{% endif %}" href="{{ url_for('data_cleaning') }}">
+                                <i class="fas fa-broom"></i> Data Cleaning
                             </a>
                         </li>
                         <li class="nav-item mt-3">

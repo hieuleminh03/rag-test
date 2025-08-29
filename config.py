@@ -21,6 +21,8 @@ class Config:
     LOGS_DIR = BASE_DIR / 'logs'
     TEMPLATES_DIR = BASE_DIR / 'templates'
     STATIC_DIR = BASE_DIR / 'static'
+    UPLOAD_FOLDER = str(BASE_DIR / 'uploads')
+    SELECTION_CONFIGS_DIR = BASE_DIR / 'selection_configs'
     
     # Data files
     TEST_DATA_FILE = DATA_DIR / 'test_data.json'
@@ -44,8 +46,11 @@ class Config:
     def init_directories(cls):
         """Create necessary directories"""
         for directory in [cls.DATA_DIR, cls.EXPORTS_DIR, cls.LOGS_DIR, 
-                         cls.TEMPLATES_DIR, cls.STATIC_DIR]:
+                         cls.TEMPLATES_DIR, cls.STATIC_DIR, cls.SELECTION_CONFIGS_DIR]:
             directory.mkdir(exist_ok=True)
+        
+        # Create uploads directory
+        Path(cls.UPLOAD_FOLDER).mkdir(exist_ok=True)
     
     @classmethod
     def get_config(cls) -> Dict[str, Any]:

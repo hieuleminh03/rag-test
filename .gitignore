@@ -69,6 +69,8 @@ Thumbs.db
 logs/
 
 # Database
+data/
+uploads/
 *.db
 *.sqlite
 *.sqlite3

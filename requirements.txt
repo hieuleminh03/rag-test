@@ -1,14 +1,16 @@
 # Core web framework
-flask>=2.3.0
+flask>=3.1.2
 
-# Optional: For full RAG functionality (uncomment if needed)
-# langchain-core
-# langchain-google-genai  
-# langchain-weaviate
-# langchain-community
-# langgraph
-# python-dotenv
-# weaviate-client
+# AI and LangChain integration
+langchain-google-genai>=2.1.10
+google-genai>=1.32.0
+langchain-core>=0.3.75
+python-dotenv>=1.1.1
+
+# Excel processing
+pandas>=2.3.2
+openpyxl>=3.1.5
+odfpy>=1.4.1
 
 # Development and testing
 pytest>=7.0.0

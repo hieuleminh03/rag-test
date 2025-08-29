@@ -74,8 +74,7 @@ class TestCase:
         if not self.scenerio.strip():
             errors.append("Scenario is required")
         
-        if not self.test_data.strip():
-            errors.append("Test data is required")
+        # test_data is optional, no validation needed
         
         if not self.steps:
             errors.append("At least one test step is required")

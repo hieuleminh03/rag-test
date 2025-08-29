@@ -6,7 +6,10 @@ Provides a user-friendly interface to manage test cases and demonstrate RAG capa
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 import logging
+import os
+import uuid
 from typing import Dict, Any
+from werkzeug.utils import secure_filename
 
 from config import Config
 from services import (
@@ -17,6 +20,7 @@ from services import (
 )
 from utils import ErrorHandler, setup_logging
 from models import TestCase
+from excel_processor import ExcelProcessor, analyze_excel_structure
 
 # Setup logging
 setup_logging()
@@ -38,10 +42,14 @@ def create_app(config_name: str = 'default') -> Flask:
     api_doc_service = APIDocumentationService()
     coverage_service = CoverageAnalysisService(test_case_service, api_doc_service)
     export_service = ExportService(test_case_service)
+    excel_processor = ExcelProcessor()
     
-    return app, test_case_service, api_doc_service, coverage_service, export_service
+    return app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor
 
-app, test_case_service, api_doc_service, coverage_service, export_service = create_app()
+app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor = create_app()
+
+# Global storage for uploaded files (in production, use Redis or database)
+uploaded_files = {}
 
 @app.route('/')
 def index():
@@ -303,6 +311,533 @@ def export_data():
         flash(f"Error exporting test cases: {str(e)}", 'error')
     
     return redirect(url_for('test_cases'))
+
+@app.route('/data-cleaning')
+def data_cleaning():
+    """Data cleaning interface"""
+    return render_template('data_cleaning.html')
+
+@app.route('/api/analyze_excel', methods=['POST'])
+def api_analyze_excel():
+    """Analyze uploaded Excel files"""
+    try:
+        if 'files' not in request.files:
+            return jsonify({'success': False, 'error': 'No files uploaded'}), 400
+        
+        files = request.files.getlist('files')
+        if not files or all(f.filename == '' for f in files):
+            return jsonify({'success': False, 'error': 'No files selected'}), 400
+        
+        # Create uploads directory
+        upload_dir = os.path.join(app.config.get('UPLOAD_FOLDER', 'uploads'))
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        analyzed_files = {}
+        
+        for file in files:
+            if file and file.filename:
+                # Secure filename and save
+                filename = secure_filename(file.filename)
+                file_key = str(uuid.uuid4())
+                file_path = os.path.join(upload_dir, f"{file_key}_{filename}")
+                file.save(file_path)
+                
+                # Analyze the file
+                analysis = analyze_excel_structure(file_path)
+                analysis['file_path'] = file_path
+                analysis['file_key'] = file_key
+                
+                # Store in memory (use database in production)
+                uploaded_files[file_key] = {
+                    'file_path': file_path,
+                    'filename': filename,
+                    'analysis': analysis
+                }
+                
+                analyzed_files[file_key] = analysis
+        
+        return jsonify({
+            'success': True,
+            'files': analyzed_files,
+            'message': f'Analyzed {len(analyzed_files)} files successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error analyzing Excel files: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/get_sheet_data', methods=['POST'])
+def api_get_sheet_data():
+    """Get data for a specific sheet"""
+    try:
+        data = request.json
+        file_key = data.get('file_key')
+        sheet_name = data.get('sheet_name')
+        
+        if not file_key or not sheet_name:
+            return jsonify({'success': False, 'error': 'File key and sheet name required'}), 400
+        
+        if file_key not in uploaded_files:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        file_path = uploaded_files[file_key]['file_path']
+        sheet_data = excel_processor.get_sheet_data(file_path, sheet_name)
+        
+        if 'error' in sheet_data:
+            return jsonify({'success': False, 'error': sheet_data['error']}), 500
+        
+        return jsonify({
+            'success': True,
+            'sheet_data': sheet_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting sheet data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/extract_data', methods=['POST'])
+def api_extract_data():
+    """Extract data based on selections"""
+    try:
+        data = request.json
+        file_key = data.get('file_key')
+        selections = data.get('selections', [])
+        
+        if not file_key or not selections:
+            return jsonify({'success': False, 'error': 'File key and selections required'}), 400
+        
+        if file_key not in uploaded_files:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        file_path = uploaded_files[file_key]['file_path']
+        
+        # Create selection config
+        selection_config = {
+            'sheets': []
+        }
+        
+        # Group selections by sheet
+        sheets_dict = {}
+        for selection in selections:
+            sheet_name = selection['sheet_name']
+            if sheet_name not in sheets_dict:
+                sheets_dict[sheet_name] = []
+            sheets_dict[sheet_name].append(selection)
+        
+        # Format for processor
+        for sheet_name, sheet_selections in sheets_dict.items():
+            selection_config['sheets'].append({
+                'name': sheet_name,
+                'selections': sheet_selections
+            })
+        
+        # Extract data
+        extracted_data = excel_processor.extract_data_with_selection(file_path, selection_config)
+        
+        return jsonify({
+            'success': True,
+            'extracted_data': extracted_data,
+            'count': len(extracted_data)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error extracting data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/save_extracted_data', methods=['POST'])
+def api_save_extracted_data():
+    """Save extracted data as test cases"""
+    try:
+        data = request.json
+        test_cases_data = data.get('test_cases', [])
+        
+        if not test_cases_data:
+            return jsonify({'success': False, 'error': 'No test cases to save'}), 400
+        
+        saved_count = 0
+        errors = []
+        
+        for tc_data in test_cases_data:
+            try:
+                # Use upsert to handle duplicates
+                test_case = test_case_service.upsert_test_case(tc_data)
+                saved_count += 1
+            except Exception as e:
+                errors.append(f"Error saving test case {tc_data.get('id', 'unknown')}: {str(e)}")
+        
+        return jsonify({
+            'success': True,
+            'saved_count': saved_count,
+            'errors': errors,
+            'message': f'Saved {saved_count} test cases successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving extracted data: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/test-case-manager')
+def test_case_manager():
+    """Test case management interface"""
+    return render_template('test_case_manager.html')
+
+@app.route('/api/test_cases')
+def api_get_test_cases():
+    """Get all test cases with statistics"""
+    try:
+        test_cases = test_case_service.get_all_test_cases()
+        stats = test_case_service.get_statistics()
+        
+        return jsonify({
+            'success': True,
+            'test_cases': [tc.to_dict() for tc in test_cases],
+            'statistics': stats.to_dict()
+        })
+    except Exception as e:
+        logger.error(f"Error getting test cases: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/test_cases/<case_id>', methods=['PUT'])
+def api_update_test_case(case_id):
+    """Update a test case"""
+    try:
+        updates = request.json
+        if not updates:
+            return jsonify({'success': False, 'error': 'No update data provided'}), 400
+        
+        updated_case = test_case_service.update_test_case(case_id, updates)
+        
+        return jsonify({
+            'success': True,
+            'test_case': updated_case.to_dict(),
+            'message': f'Test case {case_id} updated successfully'
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error updating test case {case_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/test_cases/<case_id>', methods=['DELETE'])
+def api_delete_test_case(case_id):
+    """Delete a test case"""
+    try:
+        purpose = request.args.get('purpose')
+        
+        if test_case_service.delete_test_case(case_id, purpose):
+            return jsonify({
+                'success': True,
+                'message': f'Test case {case_id} deleted successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Test case not found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error deleting test case {case_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/save_config', methods=['POST'])
+def api_save_config():
+    """Save selection configuration"""
+    try:
+        config = request.json
+        config_name = config.get('name')
+        
+        if not config_name:
+            return jsonify({'success': False, 'error': 'Configuration name required'}), 400
+        
+        success = excel_processor.save_selection_config(config_name, config)
+        
+        return jsonify({
+            'success': success,
+            'message': 'Configuration saved successfully' if success else 'Failed to save configuration'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error saving configuration: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/get_configs')
+def api_get_configs():
+    """Get available configurations"""
+    try:
+        configs = excel_processor.get_available_configs()
+        config_details = []
+        
+        for config_name in configs:
+            config = excel_processor.load_selection_config(config_name)
+            if config:
+                config_details.append(config)
+        
+        return jsonify({
+            'success': True,
+            'configs': config_details
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting configurations: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/load_config', methods=['POST'])
+def api_load_config():
+    """Load a saved configuration"""
+    try:
+        data = request.json
+        config_name = data.get('name')
+        
+        if not config_name:
+            return jsonify({'success': False, 'error': 'Configuration name required'}), 400
+        
+        config = excel_processor.load_selection_config(config_name)
+        
+        if not config:
+            return jsonify({'success': False, 'error': 'Configuration not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'config': config
+        })
+        
+    except Exception as e:
+        logger.error(f"Error loading configuration: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/ai_analyze_sheet', methods=['POST'])
+def api_ai_analyze_sheet():
+    """Get AI-enhanced analysis of a specific sheet"""
+    try:
+        data = request.json
+        file_key = data.get('file_key')
+        sheet_name = data.get('sheet_name')
+        
+        if not file_key or not sheet_name:
+            return jsonify({'success': False, 'error': 'File key and sheet name required'}), 400
+        
+        if file_key not in uploaded_files:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        file_path = uploaded_files[file_key]['file_path']
+        analysis = excel_processor.get_ai_enhanced_sheet_analysis(file_path, sheet_name)
+        
+        if 'error' in analysis:
+            return jsonify({'success': False, 'error': analysis['error']}), 500
+        
+        return jsonify({
+            'success': True,
+            'analysis': analysis
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in AI sheet analysis: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/ai_suggest_mapping', methods=['POST'])
+def api_ai_suggest_mapping():
+    """Get AI suggestions for field mapping"""
+    try:
+        data = request.json
+        file_key = data.get('file_key')
+        sheet_name = data.get('sheet_name')
+        header_row = data.get('header_row', 0)
+        
+        if not file_key or not sheet_name:
+            return jsonify({'success': False, 'error': 'File key and sheet name required'}), 400
+        
+        if file_key not in uploaded_files:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        file_path = uploaded_files[file_key]['file_path']
+        suggestions = excel_processor.get_ai_field_mapping_suggestions(file_path, sheet_name, header_row)
+        
+        if 'error' in suggestions:
+            return jsonify({'success': False, 'error': suggestions['error']}), 500
+        
+        return jsonify({
+            'success': True,
+            'suggestions': suggestions
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting AI mapping suggestions: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/generate_extraction_logic', methods=['POST'])
+def api_generate_extraction_logic():
+    """Generate AI-powered extraction logic for test cases"""
+    try:
+        data = request.json
+        file_key = data.get('file_key')
+        sheet_name = data.get('sheet_name')
+        
+        if not file_key or not sheet_name:
+            return jsonify({'success': False, 'error': 'File key and sheet name required'}), 400
+        
+        if file_key not in uploaded_files:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        file_path = uploaded_files[file_key]['file_path']
+        extraction_logic = excel_processor.generate_extraction_logic(file_path, sheet_name)
+        
+        if 'error' in extraction_logic:
+            return jsonify({'success': False, 'error': extraction_logic['error']}), 500
+        
+        return jsonify({
+            'success': True,
+            'extraction_logic': extraction_logic
+        })
+        
+    except Exception as e:
+        logger.error(f"Error generating extraction logic: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/preview_smart_extraction', methods=['POST'])
+def api_preview_smart_extraction():
+    """Preview smart extraction results"""
+    try:
+        data = request.json
+        file_key = data.get('file_key')
+        sheet_name = data.get('sheet_name')
+        extraction_logic = data.get('extraction_logic')
+        max_rows = data.get('max_rows', 5)
+        
+        if not file_key or not sheet_name or not extraction_logic:
+            return jsonify({'success': False, 'error': 'File key, sheet name, and extraction logic required'}), 400
+        
+        if file_key not in uploaded_files:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        file_path = uploaded_files[file_key]['file_path']
+        preview_result = excel_processor.preview_smart_extraction(file_path, sheet_name, extraction_logic, max_rows)
+        
+        if 'error' in preview_result:
+            return jsonify({'success': False, 'error': preview_result['error']}), 500
+        
+        return jsonify({
+            'success': True,
+            'preview': preview_result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error previewing smart extraction: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/extract_test_cases_smart', methods=['POST'])
+def api_extract_test_cases_smart():
+    """Extract test cases using AI-generated logic with merged cell handling"""
+    try:
+        data = request.json
+        file_key = data.get('file_key')
+        sheet_name = data.get('sheet_name')
+        extraction_logic = data.get('extraction_logic')
+        
+        if not file_key or not sheet_name or not extraction_logic:
+            return jsonify({'success': False, 'error': 'File key, sheet name, and extraction logic required'}), 400
+        
+        if file_key not in uploaded_files:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        file_path = uploaded_files[file_key]['file_path']
+        extraction_result = excel_processor.extract_test_cases_smart(file_path, sheet_name, extraction_logic)
+        
+        if 'error' in extraction_result:
+            return jsonify({'success': False, 'error': extraction_result['error']}), 500
+        
+        return jsonify({
+            'success': True,
+            'extraction_result': extraction_result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in smart test case extraction: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/find_template_header', methods=['POST'])
+def api_find_template_header():
+    """Find the header row for template extraction"""
+    try:
+        data = request.json
+        file_key = data.get('file_key')
+        sheet_name = data.get('sheet_name')
+        
+        if not file_key or not sheet_name:
+            return jsonify({'success': False, 'error': 'File key and sheet name required'}), 400
+        
+        if file_key not in uploaded_files:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        file_path = uploaded_files[file_key]['file_path']
+        header_result = excel_processor.find_template_header(file_path, sheet_name)
+        
+        if 'error' in header_result:
+            return jsonify({'success': False, 'error': header_result['error']}), 500
+        
+        return jsonify({
+            'success': True,
+            'header_result': header_result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error finding template header: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/preview_template_extraction', methods=['POST'])
+def api_preview_template_extraction():
+    """Preview template extraction results"""
+    try:
+        data = request.json
+        file_key = data.get('file_key')
+        sheet_name = data.get('sheet_name')
+        max_rows = data.get('max_rows', 5)
+        
+        if not file_key or not sheet_name:
+            return jsonify({'success': False, 'error': 'File key and sheet name required'}), 400
+        
+        if file_key not in uploaded_files:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        file_path = uploaded_files[file_key]['file_path']
+        preview_result = excel_processor.preview_template_extraction(file_path, sheet_name, max_rows)
+        
+        if 'error' in preview_result:
+            return jsonify({'success': False, 'error': preview_result['error']}), 500
+        
+        return jsonify({
+            'success': True,
+            'preview': preview_result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error previewing template extraction: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/extract_test_cases_template', methods=['POST'])
+def api_extract_test_cases_template():
+    """Extract test cases using template-based logic"""
+    try:
+        data = request.json
+        file_key = data.get('file_key')
+        sheet_name = data.get('sheet_name')
+        
+        if not file_key or not sheet_name:
+            return jsonify({'success': False, 'error': 'File key and sheet name required'}), 400
+        
+        if file_key not in uploaded_files:
+            return jsonify({'success': False, 'error': 'File not found'}), 404
+        
+        file_path = uploaded_files[file_key]['file_path']
+        extraction_result = excel_processor.extract_test_cases_template(file_path, sheet_name)
+        
+        if 'error' in extraction_result:
+            return jsonify({'success': False, 'error': extraction_result['error']}), 500
+        
+        return jsonify({
+            'success': True,
+            'extraction_result': extraction_result
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in template test case extraction: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.errorhandler(404)
 def not_found(error):

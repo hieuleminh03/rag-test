@@ -12,55 +12,51 @@ from datetime import datetime
 
 from models import TestCase, ValidationReport, CoverageAnalysis, Statistics
 from config import Config
+# Force use JSON database to avoid SQLite locking issues
+from json_database import JSONDatabaseManager as DatabaseManager
+DATABASE_TYPE = "json"
+print(f"Using {DATABASE_TYPE} database for reliability")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class TestCaseService:
-    """Service for test case operations"""
+    """Service for test case operations using SQLite database"""
     
-    def __init__(self, data_file: Path = None):
-        self.data_file = data_file or Config.TEST_DATA_FILE
-        self._ensure_data_file()
+    def __init__(self, db_path: Path = None):
+        self.db = DatabaseManager(db_path)
+        # Migrate from JSON if it exists
+        self._migrate_from_json_if_needed()
     
-    def _ensure_data_file(self):
-        """Ensure data file exists"""
-        if not self.data_file.exists():
-            self.data_file.parent.mkdir(parents=True, exist_ok=True)
-            self._save_test_cases([])
-            logger.info(f"Created new data file: {self.data_file}")
-    
-    def _load_raw_data(self) -> List[Dict[str, Any]]:
-        """Load raw data from file"""
+    def _migrate_from_json_if_needed(self):
+        """Migrate from JSON file if it exists and database is empty"""
         try:
-            with open(self.data_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                return data if isinstance(data, list) else []
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            logger.error(f"Error loading data: {e}")
-            return []
-    
-    def _save_test_cases(self, test_cases: List[TestCase]):
-        """Save test cases to file"""
-        try:
-            data = [tc.to_dict() for tc in test_cases]
-            with open(self.data_file, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            logger.info(f"Saved {len(test_cases)} test cases")
+            json_file = Config.TEST_DATA_FILE
+            if json_file.exists():
+                existing_count = len(self.get_all_test_cases())
+                if existing_count == 0:
+                    migrated = self.db.migrate_from_json(json_file)
+                    if migrated > 0:
+                        logger.info(f"Migrated {migrated} test cases from JSON to SQLite")
+                        # Backup the JSON file
+                        backup_file = json_file.with_suffix('.json.backup')
+                        json_file.rename(backup_file)
+                        logger.info(f"Backed up JSON file to {backup_file}")
         except Exception as e:
-            logger.error(f"Error saving test cases: {e}")
-            raise
+            logger.error(f"Error during JSON migration: {e}")
     
     def get_all_test_cases(self) -> List[TestCase]:
         """Get all test cases"""
-        raw_data = self._load_raw_data()
-        return [TestCase.from_dict(item) for item in raw_data]
+        return self.db.get_all_test_cases()
     
     def get_test_case_by_id(self, case_id: str) -> Optional[TestCase]:
-        """Get test case by ID"""
-        test_cases = self.get_all_test_cases()
-        return next((tc for tc in test_cases if tc.id == case_id), None)
+        """Get test case by ID (first match for backward compatibility)"""
+        return self.db.get_test_case_by_id(case_id)
+    
+    def get_test_case_by_id_and_purpose(self, case_id: str, purpose: str) -> Optional[TestCase]:
+        """Get test case by ID and purpose (unique key)"""
+        return self.db.get_test_case_by_id_and_purpose(case_id, purpose)
     
     def create_test_case(self, test_case_data: Dict[str, Any]) -> TestCase:
         """Create new test case"""
@@ -71,85 +67,72 @@ class TestCaseService:
         if errors:
             raise ValueError(f"Validation errors: {', '.join(errors)}")
         
-        # Check for duplicate ID
-        existing = self.get_test_case_by_id(test_case.id)
-        if existing:
-            raise ValueError(f"Test case with ID '{test_case.id}' already exists")
-        
-        # Add to collection
-        test_cases = self.get_all_test_cases()
-        test_cases.append(test_case)
-        self._save_test_cases(test_cases)
+        # Try to create
+        if not self.db.create_test_case(test_case):
+            raise ValueError(f"Test case with ID '{test_case.id}' and purpose '{test_case.purpose}' already exists")
         
         logger.info(f"Created test case: {test_case.id}")
         return test_case
     
+    def upsert_test_case(self, test_case_data: Dict[str, Any]) -> TestCase:
+        """Insert or update test case (for data import)"""
+        test_case = TestCase.from_dict(test_case_data)
+        
+        # Validate
+        errors = test_case.validate()
+        if errors:
+            raise ValueError(f"Validation errors: {', '.join(errors)}")
+        
+        # Upsert
+        if not self.db.upsert_test_case(test_case):
+            raise ValueError(f"Failed to save test case: {test_case.id}")
+        
+        logger.info(f"Upserted test case: {test_case.id}")
+        return test_case
+    
     def update_test_case(self, case_id: str, updates: Dict[str, Any]) -> TestCase:
         """Update existing test case"""
-        test_cases = self.get_all_test_cases()
+        # Get existing test case (first match)
+        existing = self.get_test_case_by_id(case_id)
+        if not existing:
+            raise ValueError(f"Test case with ID '{case_id}' not found")
         
-        for i, tc in enumerate(test_cases):
-            if tc.id == case_id:
-                # Apply updates
-                updated_data = tc.to_dict()
-                updated_data.update(updates)
-                updated_data['updated_at'] = datetime.now().isoformat()
-                
-                updated_case = TestCase.from_dict(updated_data)
-                
-                # Validate
-                errors = updated_case.validate()
-                if errors:
-                    raise ValueError(f"Validation errors: {', '.join(errors)}")
-                
-                test_cases[i] = updated_case
-                self._save_test_cases(test_cases)
-                
-                logger.info(f"Updated test case: {case_id}")
-                return updated_case
+        # Apply updates
+        updated_data = existing.to_dict()
+        updated_data.update(updates)
+        updated_data['updated_at'] = datetime.now().isoformat()
         
-        raise ValueError(f"Test case with ID '{case_id}' not found")
+        updated_case = TestCase.from_dict(updated_data)
+        
+        # Validate
+        errors = updated_case.validate()
+        if errors:
+            raise ValueError(f"Validation errors: {', '.join(errors)}")
+        
+        # Update in database
+        if not self.db.update_test_case(updated_case):
+            raise ValueError(f"Failed to update test case: {case_id}")
+        
+        logger.info(f"Updated test case: {case_id}")
+        return updated_case
     
-    def delete_test_case(self, case_id: str) -> bool:
+    def delete_test_case(self, case_id: str, purpose: str = None) -> bool:
         """Delete test case"""
-        test_cases = self.get_all_test_cases()
-        original_count = len(test_cases)
-        
-        test_cases = [tc for tc in test_cases if tc.id != case_id]
-        
-        if len(test_cases) == original_count:
-            return False
-        
-        self._save_test_cases(test_cases)
-        logger.info(f"Deleted test case: {case_id}")
-        return True
+        return self.db.delete_test_case(case_id, purpose)
     
     def search_test_cases(self, query: str) -> List[TestCase]:
         """Search test cases"""
         if len(query) < Config.SEARCH_MIN_LENGTH:
             return []
         
-        test_cases = self.get_all_test_cases()
-        query_lower = query.lower()
-        results = []
-        
-        for tc in test_cases:
-            searchable_text = " ".join([
-                tc.id, tc.purpose, tc.scenerio, tc.test_data,
-                " ".join(tc.steps), " ".join(tc.expected), tc.note
-            ]).lower()
-            
-            if query_lower in searchable_text:
-                results.append(tc)
-        
-        return results
+        return self.db.search_test_cases(query)
     
     def validate_all_test_cases(self) -> ValidationReport:
         """Validate all test cases"""
         test_cases = self.get_all_test_cases()
         report = ValidationReport(total_cases=len(test_cases))
         
-        seen_ids = set()
+        seen_keys = set()
         
         for i, tc in enumerate(test_cases):
             errors = tc.validate()
@@ -164,38 +147,31 @@ class TestCaseService:
             else:
                 report.valid_cases += 1
             
-            # Check for duplicate IDs
-            if tc.id in seen_ids:
-                report.duplicate_ids.append(tc.id)
-            seen_ids.add(tc.id)
+            # Check for duplicate ID+purpose combinations
+            key = f"{tc.id}|{tc.purpose}"
+            if key in seen_keys:
+                report.duplicate_ids.append(f"{tc.id} (purpose: {tc.purpose})")
+            seen_keys.add(key)
         
         return report
     
     def get_statistics(self) -> Statistics:
         """Get test case statistics"""
+        db_stats = self.db.get_statistics()
         test_cases = self.get_all_test_cases()
         
-        stats = Statistics(total_cases=len(test_cases))
+        stats = Statistics(
+            total_cases=db_stats['total_cases'],
+            purposes=db_stats['purposes'],
+            test_data_sources=db_stats['test_data_sources']
+        )
         
-        if not test_cases:
-            return stats
-        
-        total_steps = 0
-        total_expected = 0
-        
-        for tc in test_cases:
-            # Count purposes
-            stats.purposes[tc.purpose] = stats.purposes.get(tc.purpose, 0) + 1
+        if test_cases:
+            total_steps = sum(len(tc.steps) for tc in test_cases)
+            total_expected = sum(len(tc.expected) for tc in test_cases)
             
-            # Count test data sources
-            stats.test_data_sources[tc.test_data] = stats.test_data_sources.get(tc.test_data, 0) + 1
-            
-            # Calculate totals
-            total_steps += len(tc.steps)
-            total_expected += len(tc.expected)
-        
-        stats.avg_steps = round(total_steps / len(test_cases), 2)
-        stats.avg_expected = round(total_expected / len(test_cases), 2)
+            stats.avg_steps = round(total_steps / len(test_cases), 2)
+            stats.avg_expected = round(total_expected / len(test_cases), 2)
         
         return stats
 

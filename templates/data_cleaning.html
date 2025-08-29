@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Data Cleaning - RAG Test Case Management{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-broom"></i> Data Cleaning</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <a href="{{ url_for('test_case_manager') }}" class="btn btn-outline-primary">
+                <i class="fas fa-database"></i> Manage Test Cases
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- File Upload Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-upload"></i> Upload Excel/ODS Files</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="excelFiles" class="form-label">Select Files</label>
+                    <input type="file" class="form-control" id="excelFiles" multiple accept=".xlsx,.xls,.ods">
+                    <div class="form-text">Select one or more spreadsheet files (.xlsx, .xls, .ods)</div>
+                </div>
+                <button type="button" class="btn btn-primary" onclick="uploadFiles()">
+                    <i class="fas fa-upload"></i> Upload and Analyze
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- File Analysis Results -->
+<div id="fileAnalysis" class="row mb-4" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-chart-bar"></i> File Analysis</h5>
+            </div>
+            <div class="card-body">
+                <div id="analysisResults"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Sheet Selection -->
+<div id="sheetSelection" class="row mb-4" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-table"></i> Sheet Selection</h5>
+                <div>
+                    <select class="form-select form-select-sm" id="fileSelector" onchange="switchFile()">
+                        <option value="">Select a file...</option>
+                    </select>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6>Available Sheets</h6>
+                        <div id="sheetList" class="list-group"></div>
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-success" onclick="extractFromSelectedSheets()" disabled id="extractBtn">
+                                <i class="fas fa-extract"></i> Extract Test Cases
+                            </button>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div id="sheetPreview">
+                            <p class="text-muted">Select sheets from the left to extract test cases. Multiple sheets can be selected.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Extracted Test Cases View -->
+<div id="extractedTestCasesView" class="row mb-4" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-list-check"></i> Extracted Test Cases</h5>
+                <div>
+                    <span id="extractionStats" class="badge bg-info me-2"></span>
+                    <button type="button" class="btn btn-success" onclick="saveExtractedData()" disabled id="saveBtn">
+                        <i class="fas fa-save"></i> Save to Database
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="extractedDataPreview"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Save Configuration Modal -->
+<div class="modal fade" id="saveConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Save Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Configuration Name</label>
+                    <input type="text" class="form-control" id="configName" placeholder="e.g., Standard Test Case Template">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" id="configDescription" rows="3" placeholder="Describe this configuration..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveConfiguration()">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Load Configuration Modal -->
+<div class="modal fade" id="loadConfigModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Load Configuration</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="configList"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/data_cleaning.js') }}"></script>
+{% endblock %}
