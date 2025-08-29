@@ -622,6 +622,11 @@ def test_case_manager():
     """Test case management interface"""
     return render_template('test_case_manager.html')
 
+@app.route('/settings')
+def settings():
+    """Settings page for theme configuration"""
+    return render_template('settings.html')
+
 @app.route('/api/test_cases')
 def api_get_test_cases():
     """Get all test cases with statistics"""

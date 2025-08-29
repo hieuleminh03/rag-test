@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - RAG Test Case Management{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-cog"></i> Settings</h1>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Theme Settings -->
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-palette"></i> Theme Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Color Theme</h6>
+                        <p class="text-muted">Choose your preferred color scheme</p>
+
+                        <div class="theme-selector">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="theme" id="theme-dark" value="dark" checked>
+                                <label class="form-check-label d-flex align-items-center" for="theme-dark">
+                                    <div class="theme-preview dark-preview me-3"></div>
+                                    <div>
+                                        <strong>Dark Theme</strong>
+                                        <br><small class="text-muted">Coder-friendly dark theme</small>
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div class="form-check mt-3">
+                                <input class="form-check-input" type="radio" name="theme" id="theme-light" value="light">
+                                <label class="form-check-label d-flex align-items-center" for="theme-light">
+                                    <div class="theme-preview light-preview me-3"></div>
+                                    <div>
+                                        <strong>Light Theme</strong>
+                                        <br><small class="text-muted">Clean and bright interface</small>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <h6>Theme Preview</h6>
+                        <div class="theme-preview-card">
+                            <div class="preview-header">Header Example</div>
+                            <div class="preview-content">
+                                <div class="preview-button">Button</div>
+                                <div class="preview-text">Sample text content</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">Auto-save Settings</h6>
+                        <small class="text-muted">Your theme preference will be saved automatically</small>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="autoSaveTheme" checked>
+                        <label class="form-check-label" for="autoSaveTheme">Enabled</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Interface Settings -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5><i class="fas fa-desktop"></i> Interface Settings</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Language</h6>
+                        <select class="form-select" id="languageSelect">
+                            <option value="en">English</option>
+                            <option value="vi" selected>Vietnamese</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <h6>Items per page</h6>
+                        <select class="form-select" id="itemsPerPage">
+                            <option value="10">10 items</option>
+                            <option value="25" selected>25 items</option>
+                            <option value="50">50 items</option>
+                            <option value="100">100 items</option>
+                        </select>
+                    </div>
+                </div>
+
+                <hr>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Animation Speed</h6>
+                        <div class="range-slider">
+                            <input type="range" class="form-range" id="animationSpeed" min="0" max="100" value="50">
+                            <div class="d-flex justify-content-between">
+                                <small class="text-muted">Slow</small>
+                                <small class="text-muted">Fast</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <h6>Compact Mode</h6>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="compactMode">
+                            <label class="form-check-label" for="compactMode">
+                                Reduce spacing and padding
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Notification Settings -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5><i class="fas fa-bell"></i> Notifications</h5>
+            </div>
+            <div class="card-body">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="enableNotifications" checked>
+                    <label class="form-check-label" for="enableNotifications">
+                        Enable browser notifications
+                    </label>
+                </div>
+
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="soundEffects" checked>
+                    <label class="form-check-label" for="soundEffects">
+                        Sound effects for actions
+                    </label>
+                </div>
+
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="autoSaveNotifications">
+                    <label class="form-check-label" for="autoSaveNotifications">
+                        Show auto-save notifications
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4">
+        <!-- Quick Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-bolt"></i> Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <button class="btn btn-primary w-100 mb-2" onclick="resetToDefaults()">
+                    <i class="fas fa-undo"></i> Reset to Defaults
+                </button>
+
+                <button class="btn btn-outline-secondary w-100 mb-2" onclick="exportSettings()">
+                    <i class="fas fa-download"></i> Export Settings
+                </button>
+
+                <button class="btn btn-outline-secondary w-100" onclick="importSettings()">
+                    <i class="fas fa-upload"></i> Import Settings
+                </button>
+            </div>
+        </div>
+
+        <!-- System Info -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5><i class="fas fa-info-circle"></i> System Info</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <strong>Version:</strong> <span id="appVersion">1.0.0</span>
+                </div>
+                <div class="mb-2">
+                    <strong>Theme:</strong> <span id="currentTheme">Dark</span>
+                </div>
+                <div class="mb-2">
+                    <strong>Browser:</strong> <span id="browserInfo">Loading...</span>
+                </div>
+                <div>
+                    <strong>Last Updated:</strong> <span id="lastUpdated">Just now</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% endblock %}
