@@ -14,6 +14,7 @@ from langgraph.graph import StateGraph, END
 import dotenv
 import weaviate
 from weaviate.embedded import EmbeddedOptions
+from vietnamese_prompts import VIETNAMESE_RAG_PROMPT_TEMPLATE
 
 dotenv.load_dotenv()
 
@@ -131,96 +132,8 @@ def generate_response_node(state: RAGGraphState) -> RAGGraphState:
    question = state["question"]
    documents = state["documents"]
 
-   # Enhanced prompt template for test case generation
-   template = """You are an expert test case generator specializing in API documentation analysis and comprehensive test scenario creation.
-
-## TASK OVERVIEW
-Analyze the provided API documentation and generate detailed test cases that cover business logic flows, focusing on real-world scenarios and edge cases.
-
-## CONTEXT ANALYSIS
-Study these similar test cases to understand the expected format and coverage patterns:
-{context}
-
-## API DOCUMENTATION TO ANALYZE
-{question}
-
-## TEST CASE GENERATION REQUIREMENTS
-
-### JSON Structure (MANDATORY)
-Each test case must follow this exact structure:
-```json
-{{
-  "id": "descriptive_test_id_with_scenario",
-  "purpose": "Clear business purpose of the test",
-  "scenerio": "Specific scenario being tested with conditions",
-  "test_data": "Required data sources, DB tables, or mock data",
-  "steps": [
-    "1. Detailed step with actor and action",
-    "2. Include system interactions and API calls",
-    "3. Specify database operations and validations"
-  ],
-  "expected": [
-    "1. Expected system behavior with specific status/values",
-    "2. Database state changes with table and field details",
-    "3. API response format and error codes if applicable"
-  ],
-  "note": "API references, business rules, or technical constraints"
-}}
-```
-
-### COVERAGE AREAS (Generate test cases for each applicable area)
-
-1. **Happy Path Scenarios**
-   - Normal business flow execution
-   - Successful API integrations
-   - Proper database updates
-
-2. **Error Handling & Edge Cases**
-   - API timeouts and connection failures
-   - Invalid input data and validation errors
-   - System unavailability and maintenance modes
-   - Insufficient resources (balance, quota, etc.)
-
-3. **Business Logic Validation**
-   - Conditional flows and decision points
-   - Data transformation and calculations
-   - State transitions and status updates
-   - Multi-step process validation
-
-4. **Integration & Concurrency**
-   - External system communication
-   - Database transaction consistency
-   - Concurrent request handling
-   - Race condition prevention
-
-5. **Data Consistency & Rollback**
-   - Transaction rollback scenarios
-   - Data integrity validation
-   - Cross-table consistency checks
-   - Audit trail verification
-
-### NAMING CONVENTIONS
-- IDs: Use format "category-scenario_number" (e.g., "payment-timeout_1", "validation-invalid-product_1")
-- Be descriptive and specific about the scenario being tested
-
-### TECHNICAL DETAILS TO INCLUDE
-- Specific database tables and fields
-- API endpoint references and versions
-- Status codes and error messages
-- Timing constraints and timeouts
-- Configuration dependencies (CMS, etc.)
-
-## OUTPUT REQUIREMENTS
-Generate 5-8 comprehensive test cases covering different aspects of the API documentation. Ensure each test case is:
-- **Specific**: Clear scenario with exact conditions
-- **Actionable**: Detailed steps that can be executed
-- **Verifiable**: Measurable expected outcomes
-- **Realistic**: Based on actual business requirements
-
-Focus on business logic testing, not basic validation. Each test should represent a meaningful user journey or system interaction.
-
-## GENERATED TEST CASES:
-"""
+   # Use Vietnamese prompt template for test case generation
+   template = VIETNAMESE_RAG_PROMPT_TEMPLATE
    prompt = ChatPromptTemplate.from_template(template)
 
    # complete context

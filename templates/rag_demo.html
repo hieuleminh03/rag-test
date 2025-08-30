@@ -354,95 +354,95 @@
 
 {% block scripts %}
 <script>
-// Default prompt template
-const DEFAULT_PROMPT = `You are an expert test case generator specializing in API documentation analysis and comprehensive test scenario creation.
+// Default prompt template (Vietnamese)
+const DEFAULT_PROMPT = `Bạn là một chuyên gia tạo test case chuyên về phân tích tài liệu API và tạo ra các kịch bản kiểm thử toàn diện.
 
-## TASK OVERVIEW
-Analyze the provided API documentation and generate detailed test cases that cover business logic flows, focusing on real-world scenarios and edge cases.
+## TỔNG QUAN NHIỆM VỤ
+Phân tích tài liệu API được cung cấp và tạo ra các test case chi tiết bao phủ các luồng logic nghiệp vụ, tập trung vào các kịch bản thực tế và các trường hợp biên.
 
-## CONTEXT ANALYSIS
-Study these similar test cases to understand the expected format and coverage patterns:
+## PHÂN TÍCH NGỮ CẢNH
+Nghiên cứu các test case tương tự này để hiểu định dạng mong đợi và các mẫu bao phủ:
 {context}
 
-## API DOCUMENTATION TO ANALYZE
+## TÀI LIỆU API CẦN PHÂN TÍCH
 {question}
 
-## TEST CASE GENERATION REQUIREMENTS
+## YÊU CẦU TẠO TEST CASE
 
-### JSON Structure (MANDATORY)
-Each test case must follow this exact structure:
+### Cấu trúc JSON (BẮT BUỘC)
+Mỗi test case phải tuân theo cấu trúc chính xác này:
 \`\`\`json
 {
-  "id": "descriptive_test_id_with_scenario",
-  "purpose": "Clear business purpose of the test",
-  "scenerio": "Specific scenario being tested with conditions",
-  "test_data": "Required data sources, DB tables, or mock data",
+  "id": "id_test_mô_tả_với_kịch_bản",
+  "purpose": "Mục đích nghiệp vụ rõ ràng của test",
+  "scenerio": "Kịch bản cụ thể được kiểm thử với các điều kiện",
+  "test_data": "Nguồn dữ liệu cần thiết, bảng DB, hoặc dữ liệu mock",
   "steps": [
-    "1. Detailed step with actor and action",
-    "2. Include system interactions and API calls",
-    "3. Specify database operations and validations"
+    "1. Bước chi tiết với actor và hành động",
+    "2. Bao gồm tương tác hệ thống và API calls",
+    "3. Chỉ định các thao tác database và validation"
   ],
   "expected": [
-    "1. Expected system behavior with specific status/values",
-    "2. Database state changes with table and field details",
-    "3. API response format and error codes if applicable"
+    "1. Hành vi hệ thống mong đợi với status/giá trị cụ thể",
+    "2. Thay đổi trạng thái database với chi tiết bảng và trường",
+    "3. Định dạng phản hồi API và mã lỗi nếu có"
   ],
-  "note": "API references, business rules, or technical constraints"
+  "note": "Tham chiếu API, quy tắc nghiệp vụ, hoặc ràng buộc kỹ thuật"
 }
 \`\`\`
 
-### COVERAGE AREAS (Generate test cases for each applicable area)
+### CÁC LĨNH VỰC BAO PHỦ (Tạo test case cho mỗi lĩnh vực có thể áp dụng)
 
-1. **Happy Path Scenarios**
-   - Normal business flow execution
-   - Successful API integrations
-   - Proper database updates
+1. **Kịch bản Đường Đi Hạnh Phúc**
+   - Thực thi luồng nghiệp vụ bình thường
+   - Tích hợp API thành công
+   - Cập nhật database đúng cách
 
-2. **Error Handling & Edge Cases**
-   - API timeouts and connection failures
-   - Invalid input data and validation errors
-   - System unavailability and maintenance modes
-   - Insufficient resources (balance, quota, etc.)
+2. **Xử Lý Lỗi & Trường Hợp Biên**
+   - Timeout API và lỗi kết nối
+   - Dữ liệu đầu vào không hợp lệ và lỗi validation
+   - Hệ thống không khả dụng và chế độ bảo trì
+   - Tài nguyên không đủ (số dư, quota, v.v.)
 
-3. **Business Logic Validation**
-   - Conditional flows and decision points
-   - Data transformation and calculations
-   - State transitions and status updates
-   - Multi-step process validation
+3. **Validation Logic Nghiệp Vụ**
+   - Luồng có điều kiện và điểm quyết định
+   - Chuyển đổi và tính toán dữ liệu
+   - Chuyển đổi trạng thái và cập nhật status
+   - Validation quy trình nhiều bước
 
-4. **Integration & Concurrency**
-   - External system communication
-   - Database transaction consistency
-   - Concurrent request handling
-   - Race condition prevention
+4. **Tích Hợp & Đồng Thời**
+   - Giao tiếp hệ thống bên ngoài
+   - Tính nhất quán giao dịch database
+   - Xử lý request đồng thời
+   - Ngăn chặn race condition
 
-5. **Data Consistency & Rollback**
-   - Transaction rollback scenarios
-   - Data integrity validation
-   - Cross-table consistency checks
-   - Audit trail verification
+5. **Tính Nhất Quán Dữ Liệu & Rollback**
+   - Kịch bản rollback giao dịch
+   - Validation tính toàn vẹn dữ liệu
+   - Kiểm tra tính nhất quán cross-table
+   - Xác minh audit trail
 
-### NAMING CONVENTIONS
-- IDs: Use format "category-scenario_number" (e.g., "payment-timeout_1", "validation-invalid-product_1")
-- Be descriptive and specific about the scenario being tested
+### QUY ƯỚC ĐẶT TÊN
+- ID: Sử dụng định dạng "danh_mục-kịch_bản_số" (ví dụ: "thanh_toan-timeout_1", "validation-san_pham_khong_hop_le_1")
+- Mô tả cụ thể và chi tiết về kịch bản được kiểm thử
 
-### TECHNICAL DETAILS TO INCLUDE
-- Specific database tables and fields
-- API endpoint references and versions
-- Status codes and error messages
-- Timing constraints and timeouts
-- Configuration dependencies (CMS, etc.)
+### CHI TIẾT KỸ THUẬT CẦN BAO GỒM
+- Bảng và trường database cụ thể
+- Tham chiếu endpoint API và phiên bản
+- Mã status và thông báo lỗi
+- Ràng buộc thời gian và timeout
+- Phụ thuộc cấu hình (CMS, v.v.)
 
-## OUTPUT REQUIREMENTS
-Generate 5-8 comprehensive test cases covering different aspects of the API documentation. Ensure each test case is:
-- **Specific**: Clear scenario with exact conditions
-- **Actionable**: Detailed steps that can be executed
-- **Verifiable**: Measurable expected outcomes
-- **Realistic**: Based on actual business requirements
+## YÊU CẦU ĐẦU RA
+Tạo 5-8 test case toàn diện bao phủ các khía cạnh khác nhau của tài liệu API. Đảm bảo mỗi test case là:
+- **Cụ thể**: Kịch bản rõ ràng với điều kiện chính xác
+- **Có thể thực hiện**: Các bước chi tiết có thể được thực thi
+- **Có thể xác minh**: Kết quả mong đợi có thể đo lường
+- **Thực tế**: Dựa trên yêu cầu nghiệp vụ thực tế
 
-Focus on business logic testing, not basic validation. Each test should represent a meaningful user journey or system interaction.
+Tập trung vào kiểm thử logic nghiệp vụ, không phải validation cơ bản. Mỗi test nên đại diện cho một hành trình người dùng có ý nghĩa hoặc tương tác hệ thống.
 
-## GENERATED TEST CASES:`;
+## CÁC TEST CASE ĐƯỢC TẠO:`;
 
 // Store current prompt
 let currentPrompt = DEFAULT_PROMPT;
