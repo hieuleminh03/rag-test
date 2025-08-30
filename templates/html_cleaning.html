@@ -1,0 +1,655 @@
+{% extends "base.html" %}
+
+{% block title %}Làm sạch HTML - RAG Test Case Management{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="fas fa-code"></i> Làm sạch HTML</h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <a href="{{ url_for('data_cleaning') }}" class="btn btn-outline-primary">
+                <i class="fas fa-database"></i> Làm sạch dữ liệu
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Input Method Selection -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-exchange-alt"></i> Chọn phương thức nhập</h5>
+            </div>
+            <div class="card-body">
+                <div class="btn-group w-100" role="group" aria-label="Input method selection">
+                    <input type="radio" class="btn-check" name="inputMethod" id="fileUpload" autocomplete="off" checked>
+                    <label class="btn btn-outline-primary" for="fileUpload">
+                        <i class="fas fa-upload"></i> Upload File
+                    </label>
+
+                    <input type="radio" class="btn-check" name="inputMethod" id="pasteHtml" autocomplete="off">
+                    <label class="btn btn-outline-primary" for="pasteHtml">
+                        <i class="fas fa-paste"></i> Paste HTML
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- File Upload Section -->
+<div id="fileUploadSection" class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-upload"></i> Upload HTML Files</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="htmlFiles" class="form-label">Select HTML Files</label>
+                    <input type="file" class="form-control" id="htmlFiles" multiple accept=".html,.htm,.xhtml">
+                    <div class="form-text">Select one or more HTML files (.html, .htm, .xhtml)</div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="useAiFile" checked>
+                        <label class="form-check-label" for="useAiFile">
+                            <i class="fas fa-robot"></i> Sử dụng AI để tối ưu hóa
+                        </label>
+                        <small class="form-text text-muted">AI sẽ giúp làm sạch và tối ưu hóa nội dung markdown</small>
+                    </div>
+                </div>
+
+                <button type="button" class="btn btn-primary" onclick="uploadFiles()">
+                    <i class="fas fa-upload"></i> Upload và xử lý
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Paste HTML Section -->
+<div id="pasteHtmlSection" class="row mb-4" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-paste"></i> Paste HTML Content</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label for="htmlContent" class="form-label">HTML Content</label>
+                    <textarea class="form-control" id="htmlContent" rows="10" placeholder="Paste your HTML content here..."></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="useAiPaste" checked>
+                        <label class="form-check-label" for="useAiPaste">
+                            <i class="fas fa-robot"></i> Sử dụng AI để tối ưu hóa
+                        </label>
+                        <small class="form-text text-muted">AI sẽ giúp làm sạch và tối ưu hóa nội dung markdown</small>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary" onclick="processHtml()">
+                        <i class="fas fa-cogs"></i> Xử lý HTML
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="clearContent()">
+                        <i class="fas fa-trash"></i> Xóa
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Processing Results -->
+<div id="processingResults" class="row mb-4" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-check-circle"></i> Kết quả xử lý</h5>
+                <div>
+                    <span id="processingStats" class="badge bg-info me-2"></span>
+                    <button type="button" class="btn btn-success" onclick="downloadMarkdown()">
+                        <i class="fas fa-download"></i> Tải xuống
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="resultsContainer"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Markdown Preview -->
+<div id="markdownPreview" class="row mb-4" style="display: none;">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5><i class="fas fa-eye"></i> Preview Markdown</h5>
+                <div class="btn-group" role="group">
+                    <input type="radio" class="btn-check" name="previewMode" id="editMode" autocomplete="off" checked>
+                    <label class="btn btn-outline-secondary btn-sm" for="editMode">
+                        <i class="fas fa-edit"></i> Edit
+                    </label>
+
+                    <input type="radio" class="btn-check" name="previewMode" id="previewMode" autocomplete="off">
+                    <label class="btn btn-outline-secondary btn-sm" for="previewMode">
+                        <i class="fas fa-eye"></i> Preview
+                    </label>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="markdownEditorContainer">
+                    <textarea id="markdownEditor" class="form-control" rows="20" style="font-family: 'JetBrains Mono', monospace;"></textarea>
+                </div>
+                <div id="markdownPreviewContainer" style="display: none;">
+                    <div id="markdownRendered" class="border p-3 bg-light" style="min-height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/marked@4.0.0/marked.min.js"></script>
+<script>
+// Global variables
+let currentMarkdown = '';
+let processedFiles = {};
+let originalFiles = []; // Store original file objects for reloading
+
+// Wait for DOM to be fully loaded before executing
+document.addEventListener('DOMContentLoaded', function() {
+    // Input method switching
+    const inputMethodRadios = document.querySelectorAll('input[name="inputMethod"]');
+    inputMethodRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            const fileUploadSection = document.getElementById('fileUploadSection');
+            const pasteHtmlSection = document.getElementById('pasteHtmlSection');
+
+            if (fileUploadSection && pasteHtmlSection) {
+                if (this.id === 'fileUpload') {
+                    fileUploadSection.style.display = 'block';
+                    pasteHtmlSection.style.display = 'none';
+                } else {
+                    fileUploadSection.style.display = 'none';
+                    pasteHtmlSection.style.display = 'block';
+                }
+            }
+        });
+    });
+
+    // Preview mode switching
+    const previewModeRadios = document.querySelectorAll('input[name="previewMode"]');
+    previewModeRadios.forEach(radio => {
+        radio.addEventListener('change', function() {
+            const editorContainer = document.getElementById('markdownEditorContainer');
+            const previewContainer = document.getElementById('markdownPreviewContainer');
+
+            if (editorContainer && previewContainer) {
+                if (this.id === 'editMode') {
+                    editorContainer.style.display = 'block';
+                    previewContainer.style.display = 'none';
+                } else {
+                    editorContainer.style.display = 'none';
+                    previewContainer.style.display = 'block';
+                    updatePreview();
+                }
+            }
+        });
+    });
+
+    // Auto-update preview when editing
+    const markdownEditor = document.getElementById('markdownEditor');
+    if (markdownEditor) {
+        markdownEditor.addEventListener('input', function() {
+            currentMarkdown = this.value;
+            const previewModeRadio = document.getElementById('previewMode');
+            if (previewModeRadio && previewModeRadio.checked) {
+                updatePreview();
+            }
+        });
+    }
+});
+
+// Upload files
+async function uploadFiles() {
+    const filesInput = document.getElementById('htmlFiles');
+    if (!filesInput) {
+        alert('File input element not found');
+        return;
+    }
+
+    const files = filesInput.files;
+    const useAiCheckbox = document.getElementById('useAiFile');
+    const useAi = useAiCheckbox ? useAiCheckbox.checked : false;
+
+    if (files.length === 0) {
+        alert('Vui lòng chọn ít nhất một file HTML');
+        return;
+    }
+
+    // Store original files for reloading
+    originalFiles = Array.from(files);
+
+    const formData = new FormData();
+    for (let file of files) {
+        formData.append('files', file);
+    }
+    formData.append('use_ai', useAi.toString());
+
+    try {
+        const response = await fetch('/api/upload-html', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+            processedFiles = result.files;
+            displayResults(result.files);
+        } else {
+            alert('Lỗi: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        if (error.name === 'AbortError') {
+            alert('Yêu cầu đã timeout. Vui lòng thử lại.');
+        } else if (error.message.includes('HTTP error!')) {
+            alert('Lỗi kết nối máy chủ: ' + error.message);
+        } else {
+            alert('Có lỗi xảy ra khi xử lý file: ' + error.message);
+        }
+    }
+}
+
+// Process pasted HTML
+async function processHtml() {
+    const htmlContentTextarea = document.getElementById('htmlContent');
+    if (!htmlContentTextarea) {
+        alert('HTML content textarea not found');
+        return;
+    }
+
+    const htmlContent = htmlContentTextarea.value.trim();
+    const useAiCheckbox = document.getElementById('useAiPaste');
+    const useAi = useAiCheckbox ? useAiCheckbox.checked : false;
+
+    if (!htmlContent) {
+        alert('Vui lòng nhập nội dung HTML');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/clean-html', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                html_content: htmlContent,
+                use_ai: useAi
+            })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+            processedFiles = {
+                'pasted_content': {
+                    ...result,
+                    filename: 'Pasted Content'
+                }
+            };
+            displayResults(processedFiles);
+        } else {
+            alert('Lỗi: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        if (error.name === 'AbortError') {
+            alert('Yêu cầu đã timeout. Vui lòng thử lại.');
+        } else if (error.message.includes('HTTP error!')) {
+            alert('Lỗi kết nối máy chủ: ' + error.message);
+        } else {
+            alert('Có lỗi xảy ra khi xử lý HTML: ' + error.message);
+        }
+    }
+}
+
+// Display processing results
+function displayResults(files) {
+    const resultsContainer = document.getElementById('resultsContainer');
+    const processingResults = document.getElementById('processingResults');
+    const processingStats = document.getElementById('processingStats');
+
+    if (!resultsContainer || !processingResults || !processingStats) {
+        console.error('Required DOM elements not found for displaying results');
+        return;
+    }
+
+    let totalFiles = 0;
+    let successCount = 0;
+    let totalOriginalSize = 0;
+    let totalCleanedSize = 0;
+
+    let html = '<div class="row">';
+
+    for (const [filename, result] of Object.entries(files)) {
+        totalFiles++;
+        if (result.success) {
+            successCount++;
+            totalOriginalSize += result.original_size || 0;
+            totalCleanedSize += result.markdown ? result.markdown.length : 0;
+        }
+
+        html += `
+            <div class="col-md-6 mb-3">
+                <div class="card h-100 ${result.success ? 'border-success' : 'border-danger'}">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">${filename}</h6>
+                        <span class="badge ${result.success ? 'bg-success' : 'bg-danger'}">
+                            ${result.success ? 'Thành công' : 'Lỗi'}
+                        </span>
+                    </div>
+                    <div class="card-body">
+                        ${result.success ? `
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    Kích thước: ${formatBytes(result.original_size || 0)} →
+                                    ${formatBytes(result.markdown ? result.markdown.length : 0)}
+                                    (${result.stats ? result.stats.compression_ratio : 0}% còn lại)
+                                </small>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-primary me-2"
+                                    onclick="viewMarkdown('${filename}')">
+                                <i class="fas fa-eye"></i> Xem
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-warning me-2"
+                                    onclick="reloadFile('${filename}')">
+                                <i class="fas fa-redo"></i> Tải lại
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                    onclick="downloadSingleFile('${filename}')">
+                                <i class="fas fa-download"></i> Tải
+                            </button>
+                        ` : `
+                            <div class="text-danger">
+                                <small>Lỗi: ${result.error}</small>
+                            </div>
+                        `}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    html += '</div>';
+
+    // Add summary stats
+    if (successCount > 0) {
+        const avgCompression = totalOriginalSize > 0 ?
+            ((totalCleanedSize / totalOriginalSize) * 100).toFixed(1) : 0;
+        processingStats.textContent = `${successCount}/${totalFiles} thành công • ${avgCompression}% còn lại`;
+    } else {
+        processingStats.textContent = `${totalFiles} file`;
+    }
+
+    resultsContainer.innerHTML = html;
+    processingResults.style.display = 'block';
+
+    // Scroll to results
+    processingResults.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Reload single file
+function reloadFile(filename) {
+    console.log('Reloading file:', filename);
+
+    // Find the original file
+    const targetFile = originalFiles.find(file => file.name === filename);
+
+    if (!targetFile) {
+        alert('Không tìm thấy file gốc để tải lại. Vui lòng upload lại file.');
+        return;
+    }
+
+    const useAiCheckbox = document.getElementById('useAiFile');
+    const useAi = useAiCheckbox ? useAiCheckbox.checked : false;
+
+    // Update button text to show loading
+    const reloadBtn = event.target.closest('button');
+    if (!reloadBtn) return;
+
+    const originalText = reloadBtn.innerHTML;
+    reloadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tải lại...';
+    reloadBtn.disabled = true;
+
+    const formData = new FormData();
+    formData.append('files', targetFile);
+    formData.append('use_ai', useAi.toString());
+
+    fetch('/api/upload-html', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(result => {
+        if (result.success && result.files[filename]) {
+            // Update the processed file data
+            processedFiles[filename] = result.files[filename];
+
+            // Update the display for this specific file
+            updateFileCard(filename, result.files[filename]);
+
+            console.log('File reloaded successfully:', filename);
+        } else {
+            alert('Lỗi khi tải lại file: ' + (result.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error reloading file:', error);
+        alert('Có lỗi xảy ra khi tải lại file: ' + error.message);
+    })
+    .finally(() => {
+        // Restore button
+        reloadBtn.innerHTML = originalText;
+        reloadBtn.disabled = false;
+    });
+}
+
+// Update a specific file card with new data
+function updateFileCard(filename, newResult) {
+    // Find the card for this filename
+    const cards = document.querySelectorAll('.card');
+    for (let card of cards) {
+        const header = card.querySelector('.card-header h6');
+        if (header && header.textContent === filename) {
+            // Update the card content
+            const cardBody = card.querySelector('.card-body');
+
+            if (cardBody && newResult.success) {
+                card.className = 'card h-100 border-success';
+                cardBody.innerHTML = `
+                    <div class="mb-2">
+                        <small class="text-muted">
+                            Kích thước: ${formatBytes(newResult.original_size || 0)} →
+                            ${formatBytes(newResult.markdown ? newResult.markdown.length : 0)}
+                            (${newResult.stats ? newResult.stats.compression_ratio : 0}% còn lại)
+                        </small>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-primary me-2"
+                            onclick="viewMarkdown('${filename}')">
+                        <i class="fas fa-eye"></i> Xem
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning me-2"
+                            onclick="reloadFile('${filename}')">
+                        <i class="fas fa-redo"></i> Tải lại
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                            onclick="downloadSingleFile('${filename}')">
+                        <i class="fas fa-download"></i> Tải
+                    </button>
+                `;
+
+                // Update header badge
+                const badge = card.querySelector('.card-header .badge');
+                if (badge) {
+                    badge.className = 'badge bg-success';
+                    badge.textContent = 'Thành công';
+                }
+            } else if (cardBody) {
+                card.className = 'card h-100 border-danger';
+                cardBody.innerHTML = `
+                    <div class="text-danger">
+                        <small>Lỗi: ${newResult.error}</small>
+                    </div>
+                `;
+
+                // Update header badge
+                const badge = card.querySelector('.card-header .badge');
+                if (badge) {
+                    badge.className = 'badge bg-danger';
+                    badge.textContent = 'Lỗi';
+                }
+            }
+            break;
+        }
+    }
+}
+
+// View markdown content
+function viewMarkdown(filename) {
+    const result = processedFiles[filename];
+    if (result && result.success) {
+        currentMarkdown = result.markdown;
+        const markdownEditor = document.getElementById('markdownEditor');
+        const markdownPreview = document.getElementById('markdownPreview');
+
+        if (markdownEditor) {
+            markdownEditor.value = currentMarkdown;
+        }
+        if (markdownPreview) {
+            markdownPreview.style.display = 'block';
+            // Scroll to preview
+            markdownPreview.scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+}
+
+// Update markdown preview
+function updatePreview() {
+    const markdownEditor = document.getElementById('markdownEditor');
+    const previewContainer = document.getElementById('markdownRendered');
+
+    if (!markdownEditor || !previewContainer) {
+        console.error('Markdown editor or preview container not found');
+        return;
+    }
+
+    const markdownText = markdownEditor.value;
+
+    if (typeof marked !== 'undefined') {
+        previewContainer.innerHTML = marked.parse(markdownText);
+    } else {
+        previewContainer.innerHTML = '<pre>' + markdownText + '</pre>';
+    }
+}
+
+// Download single file
+function downloadSingleFile(filename) {
+    const result = processedFiles[filename];
+    if (result && result.success) {
+        downloadContent(result.markdown, `${filename.replace(/\.[^/.]+$/, '')}.md`);
+    }
+}
+
+// Download all markdown
+function downloadMarkdown() {
+    if (Object.keys(processedFiles).length === 0) {
+        alert('Không có file nào để tải xuống');
+        return;
+    }
+
+    if (Object.keys(processedFiles).length === 1) {
+        // Single file
+        const filename = Object.keys(processedFiles)[0];
+        const result = processedFiles[filename];
+        if (result.success) {
+            downloadContent(result.markdown, `${filename.replace(/\.[^/.]+$/, '')}.md`);
+        }
+    } else {
+        // Multiple files - create zip
+        let zipContent = '';
+        for (const [filename, result] of Object.entries(processedFiles)) {
+            if (result.success) {
+                zipContent += `--- ${filename} ---\n\n${result.markdown}\n\n`;
+            }
+        }
+        downloadContent(zipContent, 'html_cleaned.md');
+    }
+}
+
+// Utility functions
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function downloadContent(content, filename) {
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function clearContent() {
+    const htmlContentTextarea = document.getElementById('htmlContent');
+    const processingResults = document.getElementById('processingResults');
+    const markdownPreview = document.getElementById('markdownPreview');
+
+    if (htmlContentTextarea) {
+        htmlContentTextarea.value = '';
+    }
+    if (processingResults) {
+        processingResults.style.display = 'none';
+    }
+    if (markdownPreview) {
+        markdownPreview.style.display = 'none';
+    }
+
+    processedFiles = {};
+    originalFiles = [];
+}
+</script>
+{% endblock %}
