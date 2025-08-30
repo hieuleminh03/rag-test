@@ -29,7 +29,7 @@ class Config:
     API_DOC_FILE = BASE_DIR / 'sample.md'
     
     # RAG settings
-    RAG_TOP_K = 5
+    RAG_TOP_K = 20
     RAG_CHUNK_SIZE = 500
     RAG_CHUNK_OVERLAP = 50
     

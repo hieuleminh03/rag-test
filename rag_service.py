@@ -93,7 +93,7 @@ class RAGService:
             self._check_embedded_status()
             
             if self.is_embedded:
-                self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
+                self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": Config.RAG_TOP_K})
                 self._setup_workflow()
                 logger.info("RAG workflow initialized")
             
@@ -214,7 +214,7 @@ Note: {item.get('note', '')}
             # Setup retriever and workflow if embedding was successful
             if embedded_count > 0:
                 try:
-                    self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
+                    self.retriever = self.vectorstore.as_retriever(search_kwargs={"k": Config.RAG_TOP_K})
                     self._setup_workflow()
                     self.is_embedded = True
                     logger.info("RAG workflow setup completed")
