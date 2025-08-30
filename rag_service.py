@@ -86,7 +86,7 @@ class RAGService:
             logger.info("Vector store created")
             
             # Initialize LLM
-            self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+            self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-pro", temperature=0)
             logger.info("LLM initialized")
             
             # Check if data is already embedded
@@ -115,28 +115,35 @@ class RAGService:
             logger.warning(f"Could not check embedded status: {e}")
             self.is_embedded = False
     
-    def load_test_case_documents(self, file_path: str = None) -> List[Document]:
-        """Load JSON test case data and convert to documents"""
-        if file_path is None:
-            file_path = str(Config.TEST_DATA_FILE)
-        
+    def load_test_case_documents(self, test_case_service=None) -> List[Document]:
+        """Load test case data from database and convert to documents"""
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                json_data = json.load(f)
+            # Import here to avoid circular imports
+            if test_case_service is None:
+                from services import TestCaseService
+                test_case_service = TestCaseService()
+            
+            # Get all test cases from database
+            test_cases = test_case_service.get_all_test_cases()
+            
+            if not test_cases:
+                logger.warning("No test cases found in database")
+                return []
             
             documents = []
-            for item in json_data:
+            for test_case in test_cases:
                 # Create a comprehensive text representation of each test case
-                # Avoid using "id" in content to prevent Weaviate conflicts
-                test_case_id = item.get('id', '')
+                test_case_dict = test_case.to_dict() if hasattr(test_case, 'to_dict') else test_case.__dict__
+                
+                test_case_id = test_case_dict.get('id', '')
                 content = f"""
 Test Case Identifier: {test_case_id}
-Purpose: {item.get('purpose', '')}
-Scenario: {item.get('scenerio', '')}
-Test Data: {item.get('test_data', '')}
-Steps: {' | '.join(item.get('steps', []))}
-Expected Results: {' | '.join(item.get('expected', []))}
-Note: {item.get('note', '')}
+Purpose: {test_case_dict.get('purpose', '')}
+Scenario: {test_case_dict.get('scenerio', '')}
+Test Data: {test_case_dict.get('test_data', '')}
+Steps: {' | '.join(test_case_dict.get('steps', []))}
+Expected Results: {' | '.join(test_case_dict.get('expected', []))}
+Note: {test_case_dict.get('note', '')}
                 """.strip()
                 
                 # Create document with metadata
@@ -144,22 +151,22 @@ Note: {item.get('note', '')}
                     page_content=content,
                     metadata={
                         'test_case_id': test_case_id,
-                        'purpose': item.get('purpose', ''),
-                        'scenario': item.get('scenerio', ''),
-                        'test_data': item.get('test_data', ''),
-                        'source': 'test_cases'
+                        'purpose': test_case_dict.get('purpose', ''),
+                        'scenario': test_case_dict.get('scenerio', ''),
+                        'test_data': test_case_dict.get('test_data', ''),
+                        'source': 'database'
                     }
                 )
                 documents.append(doc)
             
-            logger.info(f"Loaded {len(documents)} test case documents")
+            logger.info(f"Loaded {len(documents)} test case documents from database")
             return documents
             
         except Exception as e:
-            logger.error(f"Error loading test case documents: {e}")
+            logger.error(f"Error loading test case documents from database: {e}")
             return []
     
-    def embed_documents(self, progress_callback=None) -> Dict[str, Any]:
+    def embed_documents(self, progress_callback=None, test_case_service=None) -> Dict[str, Any]:
         """Embed test case documents into vector store with progress tracking"""
         if not self.is_initialized:
             # Try to initialize if not already done
@@ -167,49 +174,50 @@ Note: {item.get('note', '')}
                 return {"success": False, "error": "RAG service initialization failed"}
         
         try:
-            # Load documents
-            documents = self.load_test_case_documents()
+            # Load documents from database
+            documents = self.load_test_case_documents(test_case_service)
             if not documents:
-                return {"success": False, "error": "No documents to embed"}
+                return {"success": False, "error": "No test cases found in database. Please add some test cases first."}
             
-            # Process in smaller batches to avoid quota issues
-            batch_size = 2  # Even smaller batches
+            # Process in large batches for speed - much faster embedding
+            batch_size = 50  # Much larger batches for speed
             total_docs = len(documents)
             total_batches = (total_docs + batch_size - 1) // batch_size
             
             embedded_count = 0
             errors = []
             
-            logger.info(f"Starting to embed {total_docs} documents in {total_batches} batches")
+            logger.info(f"🚀 Fast embedding: {total_docs} documents in {total_batches} large batches")
             
             for i in range(0, total_docs, batch_size):
                 batch_end = min(i + batch_size, total_docs)
                 batch_docs = documents[i:batch_end]
                 batch_num = i // batch_size + 1
                 
-                logger.info(f"Processing batch {batch_num}/{total_batches}")
+                logger.info(f"⚡ Processing large batch {batch_num}/{total_batches} ({len(batch_docs)} docs)")
                 
                 try:
-                    # Add documents one by one to avoid batch issues
+                    # Add entire batch at once for maximum speed
+                    self.vectorstore.add_documents(batch_docs)
+                    embedded_count += len(batch_docs)
+                    logger.info(f"✅ Batch {batch_num} completed: {len(batch_docs)} documents embedded")
+                    
+                    # Minimal delay only between large batches
+                    if batch_end < total_docs:
+                        time.sleep(0.5)  # Very short delay
+                        
+                except Exception as e:
+                    # If batch fails, try individual documents as fallback
+                    logger.warning(f"Batch {batch_num} failed, trying individual documents: {e}")
                     for doc in batch_docs:
                         try:
                             self.vectorstore.add_documents([doc])
                             embedded_count += 1
-                            time.sleep(1)  # Small delay between documents
                         except Exception as doc_e:
                             logger.warning(f"Failed to add document: {doc_e}")
                             errors.append(f"Document error: {doc_e}")
                     
-                    logger.info(f"✅ Batch {batch_num} completed successfully")
-                    
-                    # Add delay between batches to respect rate limits
-                    if batch_end < total_docs:
-                        time.sleep(3)
-                        
-                except Exception as e:
-                    error_msg = f"Batch {batch_num} error: {e}"
-                    errors.append(error_msg)
-                    logger.error(error_msg)
+                    logger.info(f"⚠️ Batch {batch_num} completed with fallback method")
             
             # Setup retriever and workflow if embedding was successful
             if embedded_count > 0:
@@ -226,7 +234,7 @@ Note: {item.get('note', '')}
                 "embedded_count": embedded_count,
                 "total_documents": total_docs,
                 "errors": errors,
-                "message": f"Đã embedding thành công {embedded_count}/{total_docs} tài liệu"
+                "message": f"🚀 Embedding nhanh hoàn tất: {embedded_count}/{total_docs} tài liệu (batch size: {batch_size})"
             }
             
         except Exception as e:

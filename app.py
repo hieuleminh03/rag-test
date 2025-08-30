@@ -354,8 +354,8 @@ def embed_documents():
             if not rag_service.initialize():
                 return jsonify({'success': False, 'error': 'Failed to initialize RAG service'}), 500
         
-        # Start embedding process
-        result = rag_service.embed_documents()
+        # Start embedding process with test_case_service
+        result = rag_service.embed_documents(test_case_service=test_case_service)
         
         return jsonify(result)
         
