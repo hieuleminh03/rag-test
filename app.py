@@ -375,6 +375,143 @@ def rag_status():
         logger.error(f"Error getting RAG status: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/reset-system', methods=['POST'])
+def reset_system():
+    """Reset entire system: clear all test cases and RAG data"""
+    try:
+        data = request.get_json()
+        
+        # Safety check - require confirmation
+        if not data or not data.get('confirm'):
+            return jsonify({
+                'success': False, 
+                'error': 'Confirmation required for system reset'
+            }), 400
+        
+        logger.warning("🔴 SYSTEM RESET INITIATED - This will delete all data!")
+        
+        reset_results = []
+        errors = []
+        
+        # 1. Clear all test cases from database
+        try:
+            test_cases = test_case_service.get_all_test_cases()
+            initial_count = len(test_cases)
+            
+            for test_case in test_cases:
+                try:
+                    test_case_service.delete_test_case(test_case.id)
+                except Exception as e:
+                    errors.append(f"Failed to delete test case {test_case.id}: {str(e)}")
+            
+            reset_results.append(f"✅ Đã xóa {initial_count} Test Case từ database")
+            logger.info(f"Deleted {initial_count} test cases from database")
+            
+        except Exception as e:
+            error_msg = f"Error clearing test cases: {str(e)}"
+            errors.append(error_msg)
+            logger.error(error_msg)
+        
+        # 2. Reset RAG system
+        try:
+            # Close existing RAG connections
+            if rag_service.client:
+                rag_service.client.close()
+                reset_results.append("✅ Đã đóng kết nối RAG client")
+            
+            # Reset RAG service state
+            rag_service.client = None
+            rag_service.vectorstore = None
+            rag_service.retriever = None
+            rag_service.llm = None
+            rag_service.app = None
+            rag_service.is_initialized = False
+            rag_service.is_embedded = False
+            
+            reset_results.append("✅ Đã reset trạng thái RAG service")
+            logger.info("RAG service state reset")
+            
+        except Exception as e:
+            error_msg = f"Error resetting RAG system: {str(e)}"
+            errors.append(error_msg)
+            logger.error(error_msg)
+        
+        # 3. Clear any cached data
+        try:
+            # Clear any file-based caches or temporary data
+            import tempfile
+            import shutil
+            
+            # Clear any temporary files related to the system
+            temp_dir = tempfile.gettempdir()
+            weaviate_dirs = [d for d in os.listdir(temp_dir) if 'weaviate' in d.lower()]
+            
+            for weaviate_dir in weaviate_dirs:
+                try:
+                    full_path = os.path.join(temp_dir, weaviate_dir)
+                    if os.path.isdir(full_path):
+                        shutil.rmtree(full_path)
+                        reset_results.append(f"✅ Đã xóa thư mục cache: {weaviate_dir}")
+                except Exception as e:
+                    errors.append(f"Failed to remove cache dir {weaviate_dir}: {str(e)}")
+            
+            logger.info("Cleared system caches")
+            
+        except Exception as e:
+            error_msg = f"Error clearing caches: {str(e)}"
+            errors.append(error_msg)
+            logger.error(error_msg)
+        
+        # 4. Reset test data file if it exists
+        try:
+            test_data_file = Config.TEST_DATA_FILE
+            if os.path.exists(test_data_file):
+                # Create empty test data file
+                with open(test_data_file, 'w', encoding='utf-8') as f:
+                    f.write('[]')
+                reset_results.append("✅ Đã reset file test_data.json")
+                logger.info("Reset test_data.json file")
+            
+        except Exception as e:
+            error_msg = f"Error resetting test data file: {str(e)}"
+            errors.append(error_msg)
+            logger.error(error_msg)
+        
+        # Prepare response
+        success_count = len(reset_results)
+        error_count = len(errors)
+        
+        message = f"Reset hoàn tất!\n\n"
+        message += f"✅ Thành công: {success_count} thao tác\n"
+        if error_count > 0:
+            message += f"❌ Lỗi: {error_count} thao tác\n\n"
+        
+        message += "Chi tiết:\n" + "\n".join(reset_results)
+        
+        if errors:
+            message += "\n\nLỗi:\n" + "\n".join(errors)
+        
+        logger.warning(f"🔴 SYSTEM RESET COMPLETED - Success: {success_count}, Errors: {error_count}")
+        
+        return jsonify({
+            'success': True,
+            'message': message,
+            'reset_results': reset_results,
+            'errors': errors,
+            'stats': {
+                'success_count': success_count,
+                'error_count': error_count,
+                'timestamp': data.get('timestamp', '')
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Critical error during system reset: {e}")
+        return jsonify({
+            'success': False, 
+            'error': f'Critical error during reset: {str(e)}'
+        }), 500
+
 
 @app.route('/coverage-analysis')
 def coverage_analysis():

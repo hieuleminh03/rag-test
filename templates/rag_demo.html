@@ -132,6 +132,14 @@
                         <button type="button" class="btn btn-outline-info" onclick="refreshAllCaches()">
                             <i class="fas fa-sync-alt me-1"></i>Làm mới cache
                         </button>
+                        <div class="border-top pt-2 mt-2">
+                            <button type="button" class="btn btn-outline-danger w-100" onclick="resetSystem()">
+                                <i class="fas fa-trash-alt me-1"></i>Reset toàn bộ hệ thống
+                            </button>
+                            <small class="text-muted d-block mt-1 text-center">
+                                <i class="fas fa-exclamation-triangle me-1"></i>Xóa tất cả Test Case & RAG data
+                            </small>
+                        </div>
                     </div>
                 </div>
                 
@@ -1000,6 +1008,78 @@ function refreshAllCaches() {
         }
     })
     .catch(error => console.error('Cache refresh failed:', error));
+}
+
+// Reset system functionality
+function resetSystem() {
+    if (!confirm('⚠️ CẢNH BÁO: Bạn có chắc chắn muốn reset toàn bộ hệ thống?\n\nViệc này sẽ:\n• Xóa tất cả Test Case trong database\n• Xóa tất cả dữ liệu RAG đã embedding\n• Reset vector store về trạng thái ban đầu\n\nHành động này KHÔNG THỂ HOÀN TÁC!')) {
+        return;
+    }
+    
+    // Double confirmation for safety
+    if (!confirm('🔴 XÁC NHẬN LẦN CUỐI:\n\nBạn thực sự muốn XÓA TẤT CẢ dữ liệu?\nGõ "XÁC NHẬN" để tiếp tục.')) {
+        return;
+    }
+    
+    const userConfirmation = prompt('Để xác nhận, vui lòng gõ chính xác: XÁC NHẬN');
+    if (userConfirmation !== 'XÁC NHẬN') {
+        alert('Đã hủy thao tác reset.');
+        return;
+    }
+    
+    // Show loading state
+    const resetBtn = event.target.closest('button');
+    const originalText = resetBtn.innerHTML;
+    resetBtn.disabled = true;
+    resetBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Đang reset...';
+    
+    // Call reset API
+    fetch('/reset-system', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            confirm: true,
+            timestamp: new Date().toISOString()
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        resetBtn.disabled = false;
+        resetBtn.innerHTML = originalText;
+        
+        if (data.success) {
+            alert('✅ Reset thành công!\n\n' + data.message);
+            
+            // Clear UI elements
+            clearInput();
+            document.getElementById('resultsCard').style.display = 'none';
+            document.getElementById('loadingCard').style.display = 'none';
+            
+            // Reset prompt to default
+            currentPrompt = DEFAULT_PROMPT;
+            updatePromptIndicator();
+            
+            // Refresh status
+            refreshStatus();
+            
+            // Optionally reload page for complete reset
+            setTimeout(() => {
+                if (confirm('Tải lại trang để hoàn tất reset?')) {
+                    location.reload();
+                }
+            }, 2000);
+        } else {
+            alert('❌ Lỗi khi reset hệ thống:\n' + data.error);
+        }
+    })
+    .catch(error => {
+        resetBtn.disabled = false;
+        resetBtn.innerHTML = originalText;
+        alert('❌ Lỗi kết nối khi reset hệ thống:\n' + error);
+        console.error('Reset system error:', error);
+    });
 }
 </script>
 {% endblock %}
