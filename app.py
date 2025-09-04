@@ -280,7 +280,7 @@ def rag_demo():
 
 @app.route('/generate-test-cases', methods=['POST'])
 def generate_test_cases():
-    """Generate test cases using RAG analysis"""
+    """Generate test cases using RAG analysis (original single-step method)"""
     try:
         api_input = request.form.get('api_input', '').strip()
         
@@ -347,6 +347,59 @@ def generate_test_cases():
         
     except Exception as e:
         logger.error(f"Error generating test cases: {e}")
+        return jsonify(ErrorHandler.handle_generic_error(e)), 500
+
+@app.route('/create-generation-plan', methods=['POST'])
+def create_generation_plan():
+    """Step 1: Create generation plan for two-step RAG process"""
+    try:
+        api_input = request.form.get('api_input', '').strip()
+        
+        if not api_input:
+            return jsonify(ErrorHandler.handle_validation_error(['API documentation is required'])), 400
+        
+        # Initialize RAG service if not already done
+        if not rag_service.is_initialized:
+            if not rag_service.initialize():
+                return jsonify({'success': False, 'error': 'Failed to initialize RAG service'}), 500
+        
+        # Create generation plan
+        result = rag_service.create_generation_plan(api_input)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error creating generation plan: {e}")
+        return jsonify(ErrorHandler.handle_generic_error(e)), 500
+
+@app.route('/generate-with-plan', methods=['POST'])
+def generate_with_plan():
+    """Step 2: Generate test cases using the plan for a specific call"""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify(ErrorHandler.handle_validation_error(['Request data is required'])), 400
+        
+        plan = data.get('plan')
+        call_id = data.get('call_id')
+        custom_prompt = data.get('custom_prompt')
+        
+        if not plan or call_id is None:
+            return jsonify(ErrorHandler.handle_validation_error(['Plan and call_id are required'])), 400
+        
+        # Initialize RAG service if not already done
+        if not rag_service.is_initialized:
+            if not rag_service.initialize():
+                return jsonify({'success': False, 'error': 'Failed to initialize RAG service'}), 500
+        
+        # Generate test cases for the specific call
+        result = rag_service.generate_test_cases_with_plan(plan, call_id, custom_prompt)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        logger.error(f"Error generating with plan: {e}")
         return jsonify(ErrorHandler.handle_generic_error(e)), 500
 
 @app.route('/embed-documents', methods=['POST'])

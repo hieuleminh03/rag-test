@@ -60,14 +60,37 @@
                         <button type="button" class="btn btn-outline-secondary" onclick="clearInput()">
                             <i class="fas fa-eraser me-1"></i>Xóa
                         </button>
-                        <button type="button" class="btn btn-outline-primary" onclick="reviewPrompt()" id="promptBtn">
-                            <i class="fas fa-eye me-1"></i>Xem Prompt
-                        </button>
-                        <button type="button" class="btn btn-primary" onclick="generateTestCases()">
-                            <i class="fas fa-magic me-1"></i>Tạo Test Case
-                        </button>
+                        <div class="d-flex gap-2 flex-wrap">
+                            <button type="button" class="btn btn-outline-secondary" onclick="reviewPrompt()" id="promptBtn">
+                                <i class="fas fa-eye me-1"></i>Xem Prompt
+                            </button>
+                            
+                            <!-- Generation Mode Selection -->
+                            <div class="me-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="usePlanning">
+                                    <label class="form-check-label" for="usePlanning">
+                                        <i class="fas fa-brain me-1"></i>Plan mode
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <button type="button" class="btn btn-primary" onclick="startGeneration()" id="generateBtn">
+                                <i class="fas fa-play me-1"></i>Tạo Test Case
+                            </button>
+                        </div>
                     </div>
                 </form>
+            </div>
+        </div>
+
+        <!-- Generation Progress -->
+        <div class="card mt-4" id="progressCard" style="display: none;">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-cogs me-2"></i>Đang tạo Test Case</h5>
+            </div>
+            <div class="card-body" id="progressContent">
+                <!-- Progress will appear here -->
             </div>
         </div>
 
@@ -641,22 +664,38 @@ function previewContent() {
     });
 }
 
-function generateTestCases() {
+// Global variables for two-step process
+let currentPlan = null;
+let generatedResults = {};
+
+function startGeneration() {
     const apiInput = document.getElementById('apiInput').value.trim();
     
     if (!apiInput) {
-        alert('Vui lòng chọn file tài liệu để phân tích');
+        alert('Vui lòng nhập tài liệu API');
         return;
     }
     
-    // Show loading
-    document.getElementById('loadingCard').style.display = 'block';
+    // Check which mode is selected
+    const isTwoStep = document.getElementById('usePlanning').checked;
+    
+    if (isTwoStep) {
+        startTwoStepGeneration(apiInput);
+    } else {
+        startSingleStepGeneration(apiInput);
+    }
+}
+
+function startSingleStepGeneration(apiInput) {
+    // Hide other sections
+    document.getElementById('progressCard').style.display = 'none';
     document.getElementById('resultsCard').style.display = 'none';
     
-    // Prepare request data - backend will handle prompt selection
-    let requestData = 'api_input=' + encodeURIComponent(apiInput);
+    // Show loading
+    document.getElementById('loadingCard').style.display = 'block';
     
-    // API call
+    const requestData = 'api_input=' + encodeURIComponent(apiInput);
+    
     fetch('/generate-test-cases', {
         method: 'POST',
         headers: {
@@ -678,6 +717,219 @@ function generateTestCases() {
         document.getElementById('loadingCard').style.display = 'none';
         alert('Lỗi khi tạo Test Case: ' + error);
     });
+}
+
+function startTwoStepGeneration(apiInput) {
+    // Hide other sections
+    document.getElementById('resultsCard').style.display = 'none';
+    
+    // Show progress
+    document.getElementById('progressCard').style.display = 'block';
+    document.getElementById('loadingCard').style.display = 'block';
+    
+    updateProgress('Đang phân tích tài liệu và lập kế hoạch...', 10);
+    
+    // Step 1: Create plan
+    const requestData = 'api_input=' + encodeURIComponent(apiInput);
+    
+    fetch('/create-generation-plan', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: requestData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentPlan = data.plan;
+            updateProgress('Kế hoạch đã tạo! Bắt đầu tạo test case...', 30);
+            
+            // Show plan summary
+            showPlanSummary(data);
+            
+            // Start generating all calls
+            generateAllCallsSequentially();
+        } else {
+            document.getElementById('loadingCard').style.display = 'none';
+            alert('Lỗi khi tạo kế hoạch: ' + data.error);
+        }
+    })
+    .catch(error => {
+        document.getElementById('loadingCard').style.display = 'none';
+        alert('Lỗi khi tạo kế hoạch: ' + error);
+    });
+}
+
+function updateProgress(message, percentage) {
+    const progressContent = document.getElementById('progressContent');
+    if (progressContent) {
+        progressContent.innerHTML = `
+            <div class="mb-3">
+                <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         style="width: ${percentage}%"></div>
+                </div>
+                <small class="text-muted mt-2 d-block">${message}</small>
+            </div>
+        `;
+    }
+}
+
+function showPlanSummary(data) {
+    const plan = data.plan;
+    const summary = data.plan_summary;
+    
+    const progressContent = document.getElementById('progressContent');
+    if (progressContent) {
+        progressContent.innerHTML += `
+            <div class="row text-center mb-3">
+                <div class="col-3">
+                    <div class="h5 text-primary">${summary.total_calls}</div>
+                    <small class="text-muted">Calls</small>
+                </div>
+                <div class="col-3">
+                    <div class="h5 text-success">${summary.total_test_cases}</div>
+                    <small class="text-muted">Test cases ước tính</small>
+                </div>
+                <div class="col-3">
+                    <div class="h5 text-info">${summary.complexity}</div>
+                    <small class="text-muted">Độ phức tạp</small>
+                </div>
+                <div class="col-3">
+                    <div class="h5 text-warning">${plan.complexity_analysis?.total_endpoints || 'N/A'}</div>
+                    <small class="text-muted">Endpoints</small>
+                </div>
+            </div>
+            <div id="callProgress"></div>
+        `;
+    }
+}
+
+function generateAllCallsSequentially() {
+    if (!currentPlan) return;
+    
+    const calls = currentPlan.generation_calls;
+    let currentCallIndex = 0;
+    generatedResults = {};
+    
+    function generateNextCall() {
+        if (currentCallIndex >= calls.length) {
+            // All calls completed
+            combineAllResults();
+            return;
+        }
+        
+        const call = calls[currentCallIndex];
+        const progress = 30 + (currentCallIndex / calls.length) * 60;
+        
+        updateProgress(`Đang tạo test case cho: ${call.focus_area}`, progress);
+        updateCallProgress(calls, currentCallIndex);
+        
+        const requestData = {
+            plan: currentPlan,
+            call_id: call.call_id,
+            custom_prompt: null
+        };
+        
+        fetch('/generate-with-plan', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                generatedResults[call.call_id] = {
+                    count: data.generated_cases.length,
+                    cases: data.generated_cases,
+                    call_info: data.call_info
+                };
+                
+                currentCallIndex++;
+                setTimeout(generateNextCall, 1000); // Small delay between calls
+            } else {
+                alert(`Lỗi Call ${call.call_id}: ${data.error}`);
+                currentCallIndex++;
+                setTimeout(generateNextCall, 1000);
+            }
+        })
+        .catch(error => {
+            alert(`Lỗi Call ${call.call_id}: ${error}`);
+            currentCallIndex++;
+            setTimeout(generateNextCall, 1000);
+        });
+    }
+    
+    generateNextCall();
+}
+
+function updateCallProgress(calls, currentIndex) {
+    const callProgressDiv = document.getElementById('callProgress');
+    if (callProgressDiv) {
+        let html = '<div class="row">';
+        
+        calls.forEach((call, index) => {
+            let statusClass = 'text-muted';
+            let icon = 'fas fa-clock';
+            
+            if (index < currentIndex) {
+                statusClass = 'text-success';
+                icon = 'fas fa-check';
+            } else if (index === currentIndex) {
+                statusClass = 'text-primary';
+                icon = 'fas fa-spinner fa-spin';
+            }
+            
+            html += `
+                <div class="col-md-6 mb-2">
+                    <small class="${statusClass}">
+                        <i class="${icon} me-1"></i>
+                        Call ${call.call_id}: ${call.focus_area}
+                    </small>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        callProgressDiv.innerHTML = html;
+    }
+}
+
+function combineAllResults() {
+    const allCases = [];
+    
+    Object.keys(generatedResults).forEach(callId => {
+        const result = generatedResults[callId];
+        allCases.push(...result.cases);
+    });
+    
+    updateProgress('Hoàn thành! Đang hiển thị kết quả...', 100);
+    
+    setTimeout(() => {
+        document.getElementById('loadingCard').style.display = 'none';
+        document.getElementById('progressCard').style.display = 'none';
+        
+        if (allCases.length > 0) {
+            const combinedData = {
+                success: true,
+                generated_cases: allCases,
+                message: `Đã tạo ${allCases.length} test case từ ${Object.keys(generatedResults).length} calls`,
+                two_step_mode: true
+            };
+            
+            displayResults(allCases, combinedData);
+        } else {
+            alert('Không có test case nào được tạo');
+        }
+    }, 1000);
+}
+
+// Legacy function for backward compatibility
+function generateTestCases() {
+    startGeneration();
 }
 
 function displayResults(testCases, data = {}) {

@@ -29,6 +29,7 @@ from typing import TypedDict
 
 from config import Config
 from vietnamese_prompts import VIETNAMESE_RAG_PROMPT_TEMPLATE
+from rag_planning_service import RAGPlanningService
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class RAGService:
         self.app = None
         self.is_initialized = False
         self.is_embedded = False
+        self.planning_service = RAGPlanningService()
         
     def initialize(self):
         """Initialize Weaviate client and LLM"""
@@ -492,6 +494,195 @@ Note: {note}""".strip()
         except Exception as e:
             logger.error(f"Error generating test cases: {e}")
             return {"success": False, "error": str(e)}
+    
+    def create_generation_plan(self, api_documentation: str) -> Dict[str, Any]:
+        """
+        Step 1 of two-step process: Create generation plan
+        Analyzes documentation and creates a plan with combined docs and call breakdown
+        """
+        try:
+            logger.info("🔍 Step 1: Creating generation plan...")
+            
+            # Initialize planning service if needed
+            if not self.planning_service.is_initialized:
+                if not self.planning_service.initialize():
+                    return {"success": False, "error": "Failed to initialize planning service"}
+            
+            # Create the plan
+            plan_result = self.planning_service.create_generation_plan(api_documentation)
+            
+            if plan_result["success"]:
+                logger.info(f"✅ Generation plan created successfully")
+                plan_data = plan_result["plan"]
+                
+                # Add some additional metadata
+                plan_result["step"] = 1
+                plan_result["next_step"] = "generation"
+                plan_result["plan_summary"] = {
+                    "total_calls": plan_data.get("estimated_calls_needed", 0),
+                    "total_test_cases": plan_data.get("total_estimated_test_cases", 0),
+                    "complexity": plan_data.get("complexity_analysis", {}).get("complexity_level", "unknown"),
+                    "focus_areas": [call.get("focus_area", "") for call in plan_data.get("generation_calls", [])]
+                }
+                
+                return plan_result
+            else:
+                return plan_result
+                
+        except Exception as e:
+            logger.error(f"Error creating generation plan: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def generate_test_cases_with_plan(self, plan: Dict[str, Any], call_id: int, custom_prompt: str = None) -> Dict[str, Any]:
+        """
+        Step 2 of two-step process: Generate test cases for a specific call using the plan
+        Uses RAG with the combined documentation and focused context
+        """
+        if not self.is_initialized:
+            return {"success": False, "error": "RAG service not initialized"}
+        
+        if not self.is_embedded:
+            return {"success": False, "error": "Documents not embedded. Please embed documents first."}
+        
+        try:
+            logger.info(f"🚀 Step 2: Generating test cases for call {call_id}...")
+            
+            # Get context for this specific call
+            context_result = self.planning_service.get_call_context(plan, call_id)
+            if not context_result["success"]:
+                return context_result
+            
+            call_context = context_result["context"]
+            
+            # Create focused query for RAG
+            focus_area = call_context.get("focus_area", "")
+            content_scope = call_context.get("content_scope", "")
+            # Use original documentation for phase 2, not combined
+            original_doc = call_context.get("original_documentation", "")
+            
+            # Build the focused query with original documentation
+            focused_query = f"""Generate test cases for: {focus_area}
+            
+Scope: {content_scope}
+Description: {call_context.get("description", "")}
+
+API Documentation (Full):
+{original_doc[:20000]}"""  # Use larger limit for original docs
+            
+            # Check total query size and truncate if necessary
+            if len(focused_query) > 25000:
+                logger.warning(f"Focused query too large ({len(focused_query):,} chars), truncating")
+                # Keep the instruction and truncate the API doc part
+                instruction_part = f"""Generate test cases for: {focus_area}
+            
+Scope: {content_scope}
+Description: {call_context.get("description", "")}
+
+API Documentation (Combined):
+"""
+                max_doc_size = 25000 - len(instruction_part) - 100
+                truncated_doc = combined_doc[:max_doc_size] + "\n\n[Content truncated for processing]"
+                focused_query = instruction_part + truncated_doc
+            
+            # Create enhanced prompt for this specific call
+            enhanced_prompt = self._create_enhanced_prompt_for_call(call_context, custom_prompt)
+            
+            inputs = {"question": focused_query}
+            
+            # Update workflow with enhanced prompt
+            if enhanced_prompt:
+                logger.info(f"Using enhanced prompt for call {call_id}: {focus_area}")
+                self._setup_workflow(enhanced_prompt)
+            
+            logger.info(f"Generating test cases for call {call_id}/{call_context.get('total_calls', '?')} "
+                       f"(focus: {focus_area}, query size: {len(focused_query):,} chars)")
+            
+            result = None
+            final_prompt = None
+            context_used = None
+            
+            # Execute the RAG workflow
+            for s in self.app.stream(inputs):
+                if 'generate' in s:
+                    result = s['generate']['generation']
+                    final_prompt = s['generate'].get('final_prompt', '')
+                    context_used = s['generate'].get('context_used', '')
+            
+            if result:
+                logger.info(f"LLM response received for call {call_id}: {len(result)} characters")
+                
+                # Parse the generated test cases
+                test_cases = self._parse_generated_test_cases(result)
+                logger.info(f"Parsed {len(test_cases)} test cases from call {call_id}")
+                
+                # Log generation summary
+                logger.info(f"✅ Call {call_id} Generation Summary:")
+                logger.info(f"   - Focus Area: {focus_area}")
+                logger.info(f"   - Test Cases Generated: {len(test_cases)}")
+                logger.info(f"   - Estimated: {call_context.get('estimated_test_cases', 'N/A')}")
+                logger.info(f"   - Context Length: {len(context_used) if context_used else 0} characters")
+                
+                return {
+                    "success": True,
+                    "generated_cases": test_cases,
+                    "raw_response": result,
+                    "final_prompt": final_prompt,
+                    "context_used": context_used,
+                    "call_info": {
+                        "call_id": call_id,
+                        "focus_area": focus_area,
+                        "content_scope": content_scope,
+                        "estimated_test_cases": call_context.get("estimated_test_cases", 0),
+                        "total_calls": call_context.get("total_calls", 0)
+                    },
+                    "message": f"Đã tạo {len(test_cases)} Test Case cho '{focus_area}' (Call {call_id})",
+                    "used_enhanced_prompt": bool(enhanced_prompt),
+                    "step": 2
+                }
+            else:
+                return {"success": False, "error": f"No response generated for call {call_id}"}
+                
+        except Exception as e:
+            logger.error(f"Error generating test cases for call {call_id}: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _create_enhanced_prompt_for_call(self, call_context: Dict[str, Any], custom_prompt: str = None) -> str:
+        """Create an enhanced prompt template for a specific generation call"""
+        try:
+            focus_area = call_context.get("focus_area", "")
+            content_scope = call_context.get("content_scope", "")
+            description = call_context.get("description", "")
+            estimated_cases = call_context.get("estimated_test_cases", 50)
+            call_id = call_context.get("call_id", 1)
+            total_calls = call_context.get("total_calls", 1)
+            
+            # Use custom prompt if provided, otherwise enhance the default Vietnamese prompt
+            base_prompt = custom_prompt if custom_prompt else VIETNAMESE_RAG_PROMPT_TEMPLATE
+            
+            # Add call-specific instructions
+            enhanced_prompt = f"""## THÔNG TIN CALL HIỆN TẠI
+Call {call_id}/{total_calls} - Tập trung vào: {focus_area}
+
+Mô tả: {description}
+Phạm vi nội dung: {content_scope}
+Số test case ước tính: {estimated_cases}
+
+## HƯỚNG DẪN ĐẶC BIỆT CHO CALL NÀY
+- Tập trung chủ yếu vào các API và business logic liên quan đến: {focus_area}
+- Ưu tiên các kịch bản trong phạm vi: {content_scope}
+- Tạo khoảng {estimated_cases} test case chất lượng cao
+- Đảm bảo coverage toàn diện cho domain này
+
+{base_prompt}
+
+## LƯU Ý QUAN TRỌNG
+Đây là call {call_id} trong tổng số {total_calls} calls. Hãy tập trung vào domain "{focus_area}" và tạo test case chi tiết, thực tế cho phạm vi này."""
+            
+            return enhanced_prompt
+            
+        except Exception as e:
+            logger.warning(f"Error creating enhanced prompt: {e}")
+            return custom_prompt or VIETNAMESE_RAG_PROMPT_TEMPLATE
     
     def _optimize_api_documentation(self, api_doc: str) -> str:
         """Optimize API documentation to reduce size while preserving important information"""
