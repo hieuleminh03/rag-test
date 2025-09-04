@@ -12,6 +12,7 @@ from datetime import datetime
 
 from models import TestCase, ValidationReport, CoverageAnalysis, Statistics
 from config import Config
+from vietnamese_prompts import DEFAULT_RAG_PROMPT_TEMPLATE, GENERAL_RULES_TEMPLATE
 # Force use JSON database to avoid SQLite locking issues
 from json_database import JSONDatabaseManager as DatabaseManager
 DATABASE_TYPE = "json"
@@ -400,14 +401,13 @@ class PromptManagementService:
     def _ensure_prompts_file(self):
         """Ensure prompts file exists with default prompt"""
         if not self.prompts_file.exists():
-            from vietnamese_prompts import VIETNAMESE_RAG_PROMPT_TEMPLATE
             default_prompts = {
                 "prompts": {
                     "default": {
                         "id": "default",
-                        "name": "Vietnamese Default",
-                        "description": "Default Vietnamese prompt for test case generation",
-                        "content": VIETNAMESE_RAG_PROMPT_TEMPLATE,
+                        "name": "Default Prompt Template",
+                        "description": "Default prompt template for test case generation (formerly Vietnamese)",
+                        "content": DEFAULT_RAG_PROMPT_TEMPLATE,
                         "created_at": datetime.now().isoformat(),
                         "updated_at": datetime.now().isoformat(),
                         "is_system": True
@@ -417,6 +417,9 @@ class PromptManagementService:
             }
             self._save_prompts_data(default_prompts)
             logger.info("Created default prompts file")
+            
+        # Ensure general rules exist in database
+        self._ensure_general_rules()
     
     def _load_prompts_data(self) -> Dict[str, Any]:
         """Load prompts data from file"""
@@ -583,20 +586,51 @@ class PromptManagementService:
             }
         else:
             # Fallback
-            from vietnamese_prompts import VIETNAMESE_RAG_PROMPT_TEMPLATE
             return {
-                "prompt": VIETNAMESE_RAG_PROMPT_TEMPLATE,
+                "prompt": DEFAULT_RAG_PROMPT_TEMPLATE,
                 "prompt_type": "default",
                 "prompt_id": "default",
-                "prompt_name": "Vietnamese Default"
+                "prompt_name": "Default Template"
             }
     
     def get_prompt_for_rag(self) -> Optional[str]:
-        """Get the prompt template for RAG service"""
+        """Get the prompt template for RAG service with general rules appended"""
         active_prompt = self.get_active_prompt()
-        if active_prompt and not active_prompt.get("is_system", False):
-            return active_prompt["content"]
-        return None  # RAG service will use default Vietnamese template
+        if active_prompt:
+            main_prompt = active_prompt["content"]
+            general_rules = self.get_general_rules()
+            # Combine main prompt with general rules
+            return main_prompt + "\n\n" + general_rules
+        return None
+    
+    def _ensure_general_rules(self):
+        """Ensure general rules exist in database"""
+        data = self._load_prompts_data()
+        if "general_rules" not in data:
+            data["general_rules"] = GENERAL_RULES_TEMPLATE.strip()
+            self._save_prompts_data(data)
+            logger.info("Created default general rules in database")
+    
+    def get_general_rules(self) -> str:
+        """Get the general rules that are always appended to prompts"""
+        try:
+            data = self._load_prompts_data()
+            return data.get("general_rules", GENERAL_RULES_TEMPLATE.strip())
+        except Exception as e:
+            logger.error(f"Error reading general rules: {e}")
+            return GENERAL_RULES_TEMPLATE.strip()
+    
+    def update_general_rules(self, rules_content: str) -> bool:
+        """Update the general rules content"""
+        try:
+            data = self._load_prompts_data()
+            data["general_rules"] = rules_content
+            self._save_prompts_data(data)
+            logger.info("General rules updated successfully")
+            return True
+        except Exception as e:
+            logger.error(f"Error updating general rules: {e}")
+            return False
     
     def duplicate_prompt(self, prompt_id: str, new_name: str = None) -> Dict[str, Any]:
         """Duplicate an existing prompt"""

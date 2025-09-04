@@ -1433,13 +1433,49 @@ def api_duplicate_prompt(prompt_id):
 def api_get_default_template():
     """Get the default prompt template"""
     try:
-        from vietnamese_prompts import VIETNAMESE_RAG_PROMPT_TEMPLATE
+        from vietnamese_prompts import DEFAULT_RAG_PROMPT_TEMPLATE
         return jsonify({
             'success': True,
-            'template': VIETNAMESE_RAG_PROMPT_TEMPLATE
+            'template': DEFAULT_RAG_PROMPT_TEMPLATE
         })
     except Exception as e:
         logger.error(f"Error getting default template: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/general-rules')
+def api_get_general_rules():
+    """Get the general rules content"""
+    try:
+        rules = prompt_service.get_general_rules()
+        return jsonify({
+            'success': True,
+            'rules': rules
+        })
+    except Exception as e:
+        logger.error(f"Error getting general rules: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/general-rules', methods=['PUT'])
+def api_update_general_rules():
+    """Update the general rules content"""
+    try:
+        data = request.json
+        if not data or 'rules' not in data:
+            return jsonify({'success': False, 'error': 'Rules content is required'}), 400
+        
+        rules_content = data['rules']
+        success = prompt_service.update_general_rules(rules_content)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'General rules updated successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update general rules'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error updating general rules: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 @app.errorhandler(404)
 def not_found(error):

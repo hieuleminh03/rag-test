@@ -33,6 +33,30 @@
     </div>
 </div>
 
+<!-- General Rules Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-warning">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-gavel me-2"></i>General Rules (Áp dụng cho tất cả prompts)</h5>
+                <button type="button" class="btn btn-dark btn-sm" onclick="editGeneralRules()">
+                    <i class="fas fa-edit me-1"></i>Chỉnh sửa
+                </button>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small mb-2">Các quy tắc này sẽ được tự động thêm vào cuối mọi prompt để đảm bảo tính nhất quán:</p>
+                <div id="generalRulesPreview" style="max-height: 150px; overflow-y: auto; font-size: 0.85em; background-color: #f8f9fa; padding: 10px; border-radius: 5px;">
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border spinner-border-sm text-secondary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Prompts List -->
 <div class="row">
     <div class="col-12">
@@ -187,6 +211,44 @@
     </div>
 </div>
 
+<!-- General Rules Modal -->
+<div class="modal fade" id="generalRulesModal" tabindex="-1" aria-labelledby="generalRulesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="generalRulesModalLabel">
+                    <i class="fas fa-gavel me-2"></i>Chỉnh sửa General Rules
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Lưu ý:</strong> Các quy tắc này sẽ được tự động thêm vào cuối mọi prompt để đảm bảo tính nhất quán. 
+                    Chúng bao gồm các nguyên tắc quan trọng như tránh tạo validation test cases.
+                </div>
+                <div class="mb-3">
+                    <label for="generalRulesContent" class="form-label">Nội dung General Rules</label>
+                    <textarea class="form-control" id="generalRulesContent" rows="20" 
+                              style="font-family: monospace; font-size: 12px;"
+                              placeholder="Nhập nội dung general rules..."></textarea>
+                    <div class="form-text">
+                        <span id="rulesLength">0</span> ký tự
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Hủy
+                </button>
+                <button type="button" class="btn btn-warning" onclick="saveGeneralRules()">
+                    <i class="fas fa-save me-1"></i>Lưu General Rules
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -198,6 +260,7 @@ let isEditMode = false;
 document.addEventListener('DOMContentLoaded', function() {
     loadActivePrompt();
     loadAllPrompts();
+    loadGeneralRules();
     
     // Update character count
     document.getElementById('promptContent').addEventListener('input', updateCharacterCount);
@@ -587,5 +650,96 @@ function showToast(message, type = 'info') {
         }
     }, 3000);
 }
+
+// General Rules Management Functions
+function loadGeneralRules() {
+    fetch('/api/general-rules')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const preview = document.getElementById('generalRulesPreview');
+                if (preview) {
+                    // Show first few lines as preview
+                    const lines = data.rules.split('\n').slice(0, 8);
+                    const previewText = lines.join('\n') + (data.rules.split('\n').length > 8 ? '\n...' : '');
+                    preview.innerHTML = '<pre class="mb-0" style="white-space: pre-wrap;">' + escapeHtml(previewText) + '</pre>';
+                }
+            } else {
+                console.error('Error loading general rules:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading general rules:', error);
+        });
+}
+
+function editGeneralRules() {
+    fetch('/api/general-rules')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('generalRulesContent').value = data.rules;
+                updateRulesCharacterCount();
+                
+                // Add character count listener
+                document.getElementById('generalRulesContent').addEventListener('input', updateRulesCharacterCount);
+                
+                const modal = new bootstrap.Modal(document.getElementById('generalRulesModal'));
+                modal.show();
+            } else {
+                alert('Error loading general rules: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading general rules:', error);
+            alert('Error loading general rules');
+        });
+}
+
+function updateRulesCharacterCount() {
+    const content = document.getElementById('generalRulesContent').value;
+    document.getElementById('rulesLength').textContent = content.length.toLocaleString();
+}
+
+function saveGeneralRules() {
+    const content = document.getElementById('generalRulesContent').value;
+    
+    if (!content.trim()) {
+        alert('General rules content cannot be empty');
+        return;
+    }
+    
+    fetch('/api/general-rules', {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            rules: content
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ General rules updated successfully!');
+            const modal = bootstrap.Modal.getInstance(document.getElementById('generalRulesModal'));
+            modal.hide();
+            loadGeneralRules(); // Refresh preview
+        } else {
+            alert('❌ Error updating general rules: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error updating general rules:', error);
+        alert('❌ Error updating general rules');
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 </script>
 {% endblock %}

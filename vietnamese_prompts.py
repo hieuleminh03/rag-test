@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Vietnamese Prompt Templates for RAG Test Case Generation
+Default Prompt Templates and General Rules for RAG Test Case Generation
 """
 
-# Vietnamese prompt template for test case generation
-VIETNAMESE_RAG_PROMPT_TEMPLATE = """Bạn là một chuyên gia tạo test case chuyên về phân tích tài liệu API và tạo ra các kịch bản kiểm thử toàn diện.
+# Default prompt template for test case generation (formerly Vietnamese)
+DEFAULT_RAG_PROMPT_TEMPLATE = """Bạn là một chuyên gia tạo test case chuyên về phân tích tài liệu API và tạo ra các kịch bản kiểm thử toàn diện.
 
 ## TỔNG QUAN NHIỆM VỤ
 Phân tích tài liệu API được cung cấp và tạo ra các test case chi tiết bao phủ các luồng logic nghiệp vụ, tập trung vào các kịch bản thực tế và các trường hợp biên.
@@ -102,4 +102,28 @@ Tập trung vào kiểm thử logic nghiệp vụ, TUYỆT ĐỐI KHÔNG tạo v
 ## CÁC TEST CASE ĐƯỢC TẠO:
 """
 
-# This is the best and only Vietnamese prompt template used across the entire system
+# General rules that are always appended to any prompt
+GENERAL_RULES_TEMPLATE = """
+## QUY TẮC CHUNG (LUÔN ÁP DỤNG)
+
+### NGUYÊN TẮC BẮT BUỘC
+- **TUYỆT ĐỐI KHÔNG tạo test case validation**: Không bao gồm input validation, format validation, required field validation
+- **CHỈ tập trung business logic**: Luồng nghiệp vụ, xử lý dữ liệu, tích hợp hệ thống, business rules
+- **Loại trừ hoàn toàn**: field validation, data format checks, required parameter validation, input sanitization
+
+### CHẤT LƯỢNG TEST CASE
+- Mỗi test case phải có ID rõ ràng và mục đích cụ thể
+- Các bước phải chi tiết và có thể thực hiện được
+- Kết quả mong đợi phải đo lường được
+- Tập trung vào business logic, không phải technical validation
+
+### ĐỊNH DẠNG BẮT BUỘC
+- Trả về JSON array với cấu trúc: id, purpose, scenerio, test_data, steps, expected, note
+- Steps và expected phải là arrays
+- Tất cả fields phải có giá trị (không để trống)
+
+### LƯU Ý QUAN TRỌNG
+Đây là các quy tắc bắt buộc áp dụng cho mọi prompt. Không được bỏ qua hoặc vi phạm các quy tắc này.
+"""
+
+# This is the default prompt template used across the entire system

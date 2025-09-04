@@ -28,7 +28,7 @@ from langgraph.graph import StateGraph, END
 from typing import TypedDict
 
 from config import Config
-from vietnamese_prompts import VIETNAMESE_RAG_PROMPT_TEMPLATE
+from vietnamese_prompts import DEFAULT_RAG_PROMPT_TEMPLATE, GENERAL_RULES_TEMPLATE
 from rag_planning_service import RAGPlanningService
 
 logger = logging.getLogger(__name__)
@@ -346,12 +346,12 @@ Note: {note}""".strip()
             
             logger.info(f"Context built: {len(context_parts)}/{len(documents)} documents, {len(context):,} chars")
             
-            # Use custom prompt if provided, otherwise use Vietnamese default
+            # Use custom prompt if provided, otherwise use default template
             if custom_prompt_template:
                 template = custom_prompt_template
             else:
-                # Use Vietnamese prompt template for test case generation
-                template = VIETNAMESE_RAG_PROMPT_TEMPLATE
+                # Use default prompt template for test case generation
+                template = DEFAULT_RAG_PROMPT_TEMPLATE + "\n\n" + GENERAL_RULES_TEMPLATE
             prompt = ChatPromptTemplate.from_template(template)
             
             # RAG chain
@@ -656,8 +656,8 @@ API Documentation (Combined):
             call_id = call_context.get("call_id", 1)
             total_calls = call_context.get("total_calls", 1)
             
-            # Use custom prompt if provided, otherwise enhance the default Vietnamese prompt
-            base_prompt = custom_prompt if custom_prompt else VIETNAMESE_RAG_PROMPT_TEMPLATE
+            # Use custom prompt if provided, otherwise enhance the default prompt
+            base_prompt = custom_prompt if custom_prompt else (DEFAULT_RAG_PROMPT_TEMPLATE + "\n\n" + GENERAL_RULES_TEMPLATE)
             
             # Add call-specific instructions
             enhanced_prompt = f"""## THÔNG TIN CALL HIỆN TẠI
