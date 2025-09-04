@@ -6,11 +6,8 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h2><i class="fas fa-magic me-2"></i>RAG Generator</h2>
-        <p class="text-muted mb-0">Tạo Test Case tự động từ tài liệu API</p>
+        <p class="text-muted mb-0">Tạo Test Case tự động từ nhiều file tài liệu (API doc, business logic, error mapping, database)</p>
     </div>
-    <button type="button" class="btn btn-outline-secondary" onclick="loadSampleAPI()">
-        <i class="fas fa-file-alt me-1"></i>Tải mẫu API
-    </button>
 </div>
 
 <div class="row">
@@ -18,19 +15,39 @@
         <!-- API Input -->
         <div class="card">
             <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-code me-2"></i>Nhập tài liệu API</h5>
+                <h5 class="mb-0"><i class="fas fa-upload me-2"></i>Upload tài liệu để phân tích</h5>
             </div>
             <div class="card-body">
-                <form id="ragForm">
+                <form id="ragForm" enctype="multipart/form-data">
                     <div class="mb-3">
-                        <label for="apiInput" class="form-label">Dán tài liệu API vào đây:</label>
-                        <textarea class="form-control" id="apiInput" name="api_input" rows="12" 
-                                  placeholder="Dán tài liệu API (định dạng Markdown) vào đây...">{{ api_doc if api_doc else '' }}</textarea>
+                        <label for="fileInput" class="form-label">Chọn tài liệu để phân tích:</label>
+                        <input type="file" class="form-control" id="fileInput" name="files" multiple 
+                               accept=".txt,.md,.json,.doc,.docx,.pdf" onchange="handleFileSelection()">
                         <div class="form-text text-muted">
                             <i class="fas fa-info-circle me-1"></i>
-                            Hệ thống RAG sẽ phân tích tài liệu này và tạo Test Case dựa trên các mẫu tương tự trong cơ sở dữ liệu.
+                            Chọn nhiều file (API doc, business logic, error mapping, database schema). 
+                            Hỗ trợ: .txt, .md, .json, .doc, .docx, .pdf
                         </div>
                     </div>
+                    
+                    <!-- File Preview Area -->
+                    <div id="filePreviewArea" class="mb-3" style="display: none;">
+                        <label class="form-label">Files đã chọn:</label>
+                        <div id="fileList" class="border rounded p-3 bg-light">
+                            <!-- File list will be populated here -->
+                        </div>
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearFiles()">
+                                <i class="fas fa-times me-1"></i>Xóa tất cả
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-info" onclick="previewContent()">
+                                <i class="fas fa-eye me-1"></i>Xem nội dung
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Content Preview (hidden textarea for processing) -->
+                    <textarea id="apiInput" name="api_input" style="display: none;"></textarea>
                     
                     <!-- Active Prompt Indicator -->
                     <div id="activePromptIndicator" class="alert alert-info py-2 mb-3">
@@ -342,11 +359,15 @@ function loadActivePromptInfo() {
         });
 }
 
+function clearInput() {
+    clearFiles();
+}
+
 function reviewPrompt() {
     const apiInput = document.getElementById('apiInput').value.trim();
     
     if (!apiInput) {
-        alert('Vui lòng nhập tài liệu API trước khi xem prompt');
+        alert('Vui lòng chọn file tài liệu trước khi xem prompt');
         return;
     }
     
@@ -471,11 +492,160 @@ function updatePromptIndicator() {
     }
 }
 
+// File handling functions
+let selectedFiles = [];
+let fileContents = {};
+
+function handleFileSelection() {
+    const fileInput = document.getElementById('fileInput');
+    const files = Array.from(fileInput.files);
+    
+    if (files.length === 0) {
+        document.getElementById('filePreviewArea').style.display = 'none';
+        selectedFiles = [];
+        fileContents = {};
+        return;
+    }
+    
+    selectedFiles = files;
+    displayFileList();
+    document.getElementById('filePreviewArea').style.display = 'block';
+    
+    // Read all files
+    readAllFiles();
+}
+
+function displayFileList() {
+    const fileList = document.getElementById('fileList');
+    fileList.innerHTML = '';
+    
+    selectedFiles.forEach((file, index) => {
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item d-flex justify-content-between align-items-center mb-2 p-2 border rounded';
+        fileItem.innerHTML = `
+            <div>
+                <i class="fas fa-file me-2"></i>
+                <strong>${file.name}</strong>
+                <small class="text-muted ms-2">(${formatFileSize(file.size)})</small>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeFile(${index})">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        fileList.appendChild(fileItem);
+    });
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+function removeFile(index) {
+    selectedFiles.splice(index, 1);
+    delete fileContents[index];
+    
+    if (selectedFiles.length === 0) {
+        document.getElementById('filePreviewArea').style.display = 'none';
+        document.getElementById('fileInput').value = '';
+    } else {
+        displayFileList();
+    }
+}
+
+function clearFiles() {
+    selectedFiles = [];
+    fileContents = {};
+    document.getElementById('fileInput').value = '';
+    document.getElementById('filePreviewArea').style.display = 'none';
+    document.getElementById('apiInput').value = '';
+}
+
+function readAllFiles() {
+    const promises = selectedFiles.map((file, index) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                fileContents[index] = {
+                    name: file.name,
+                    content: e.target.result,
+                    type: file.type
+                };
+                resolve();
+            };
+            reader.onerror = reject;
+            reader.readAsText(file);
+        });
+    });
+    
+    Promise.all(promises).then(() => {
+        console.log('All files read successfully');
+        updateCombinedContent();
+    }).catch(error => {
+        console.error('Error reading files:', error);
+        alert('Lỗi khi đọc file: ' + error.message);
+    });
+}
+
+function updateCombinedContent() {
+    let combinedContent = '';
+    
+    Object.values(fileContents).forEach(file => {
+        combinedContent += `\n\n=== FILE: ${file.name} ===\n\n`;
+        combinedContent += file.content;
+        combinedContent += `\n\n=== END OF ${file.name} ===\n\n`;
+    });
+    
+    document.getElementById('apiInput').value = combinedContent.trim();
+}
+
+function previewContent() {
+    const content = document.getElementById('apiInput').value;
+    if (!content) {
+        alert('Chưa có nội dung để xem');
+        return;
+    }
+    
+    // Create a modal to show content preview
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.innerHTML = `
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-eye me-2"></i>Xem trước nội dung files
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <textarea class="form-control" rows="20" readonly style="font-family: monospace; font-size: 12px;">${content}</textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+    
+    // Remove modal from DOM when hidden
+    modal.addEventListener('hidden.bs.modal', () => {
+        document.body.removeChild(modal);
+    });
+}
+
 function generateTestCases() {
     const apiInput = document.getElementById('apiInput').value.trim();
     
     if (!apiInput) {
-        alert('Vui lòng nhập tài liệu API');
+        alert('Vui lòng chọn file tài liệu để phân tích');
         return;
     }
     
