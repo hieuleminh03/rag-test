@@ -18,6 +18,11 @@ Nghiên cứu các test case tương tự này để hiểu định dạng mong 
 
 ## YÊU CẦU TẠO TEST CASE
 
+### NGUYÊN TẮC QUAN TRỌNG
+- **TUYỆT ĐỐI KHÔNG tạo test case validation**: Không bao gồm input validation, format validation, required field validation
+- **CHỈ tập trung business logic**: Luồng nghiệp vụ, xử lý dữ liệu, tích hợp hệ thống, business rules
+- **Loại trừ hoàn toàn**: field validation, data format checks, required parameter validation, input sanitization
+
 ### Cấu trúc JSON (BẮT BUỘC)
 Mỗi test case phải tuân theo cấu trúc chính xác này:
 ```json
@@ -47,17 +52,19 @@ Mỗi test case phải tuân theo cấu trúc chính xác này:
    - Tích hợp API thành công
    - Cập nhật database đúng cách
 
-2. **Xử Lý Lỗi & Trường Hợp Biên**
+2. **Xử Lý Lỗi Business Logic**
    - Timeout API và lỗi kết nối
-   - Dữ liệu đầu vào không hợp lệ và lỗi validation
+   - Business rule violations (không đủ số dư, vượt hạn mức)
    - Hệ thống không khả dụng và chế độ bảo trì
    - Tài nguyên không đủ (số dư, quota, v.v.)
+   - **KHÔNG bao gồm**: input validation, format validation, required field validation
 
-3. **Validation Logic Nghiệp Vụ**
+3. **Business Logic Processing**
    - Luồng có điều kiện và điểm quyết định
    - Chuyển đổi và tính toán dữ liệu
    - Chuyển đổi trạng thái và cập nhật status
-   - Validation quy trình nhiều bước
+   - Xử lý quy trình nhiều bước
+   - **KHÔNG bao gồm**: field validation, input validation
 
 4. **Tích Hợp & Đồng Thời**
    - Giao tiếp hệ thống bên ngoài
@@ -67,9 +74,10 @@ Mỗi test case phải tuân theo cấu trúc chính xác này:
 
 5. **Tính Nhất Quán Dữ Liệu & Rollback**
    - Kịch bản rollback giao dịch
-   - Validation tính toàn vẹn dữ liệu
+   - Business rule integrity checks
    - Kiểm tra tính nhất quán cross-table
    - Xác minh audit trail
+   - **KHÔNG bao gồm**: data format validation, input validation
 
 ### QUY ƯỚC ĐẶT TÊN
 - ID: Sử dụng định dạng "danh_mục-kịch_bản_số" (ví dụ: "thanh_toan-timeout_1", "validation-san_pham_khong_hop_le_1")
@@ -89,7 +97,7 @@ Tạo không giới hạn test case toàn diện bao phủ các khía cạnh kh�
 - **Có thể xác minh**: Kết quả mong đợi có thể đo lường
 - **Thực tế**: Dựa trên yêu cầu nghiệp vụ thực tế
 
-Tập trung vào kiểm thử logic nghiệp vụ, không phải validation cơ bản. Mỗi test nên đại diện cho một hành trình người dùng có ý nghĩa hoặc tương tác hệ thống.
+Tập trung vào kiểm thử logic nghiệp vụ, TUYỆT ĐỐI KHÔNG tạo validation test case (input validation, format validation, required field validation). Mỗi test nên đại diện cho một hành trình người dùng có ý nghĩa hoặc tương tác hệ thống.
 
 ## CÁC TEST CASE ĐƯỢC TẠO:
 """

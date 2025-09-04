@@ -66,7 +66,7 @@
                             </button>
                             
                             <!-- Generation Mode Selection -->
-                            <div class="me-3">
+                            <div class="me-3 d-flex align-items-center">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="usePlanning">
                                     <label class="form-check-label" for="usePlanning">
@@ -102,8 +102,11 @@
                     <button type="button" class="btn btn-sm btn-outline-info" onclick="showFinalPrompt()">
                         <i class="fas fa-eye me-1"></i>Xem Prompt đã gửi
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="exportResults()">
-                        <i class="fas fa-download me-1"></i>Xuất file
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="exportResults()">
+                        <i class="fas fa-download me-1"></i>Xuất JSON
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success" onclick="exportToExcel()">
+                        <i class="fas fa-file-excel me-1"></i>Xuất Excel
                     </button>
                 </div>
             </div>
@@ -950,9 +953,21 @@ function displayResults(testCases, data = {}) {
                 </button>
             </div>
             <div class="card-body">
-                <p><strong>Mục đích:</strong> ${testCase.purpose}</p>
-                <p><strong>Kịch bản:</strong> ${testCase.scenerio}</p>
-                <p><strong>Dữ liệu test:</strong> <span class="badge bg-info">${testCase.test_data}</span></p>
+                <div class="row">
+                    <div class="col-12 mb-3">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <p><strong>Mục đích:</strong> ${testCase.purpose}</p>
+                            </div>
+                            <div class="col-md-4">
+                                <p><strong>Kịch bản:</strong> ${testCase.scenerio}</p>
+                            </div>
+                            <div class="col-md-4">
+                                <p><strong>Dữ liệu test:</strong> <span class="badge bg-info">${testCase.test_data}</span></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 
                 <div class="row">
                     <div class="col-md-6">
@@ -969,7 +984,7 @@ function displayResults(testCases, data = {}) {
                     </div>
                 </div>
                 
-                ${testCase.note ? `<p><small class="text-muted"><i class="fas fa-sticky-note me-1"></i>${testCase.note}</small></p>` : ''}
+                ${testCase.note ? `<div class="row"><div class="col-12"><p><small class="text-muted"><i class="fas fa-sticky-note me-1"></i>${testCase.note}</small></p></div></div>` : ''}
                 
                 <div class="mt-2">
                     <button class="btn btn-sm btn-primary" onclick="addToTestCases(${index})">
@@ -1031,6 +1046,49 @@ function exportResults() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `generated_test_cases_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function exportToExcel() {
+    if (!window.generatedTestCases) {
+        alert('Không có Test Case nào để xuất');
+        return;
+    }
+    
+    // Create Excel data with headers
+    const headers = ['ID', 'Mục đích', 'Kịch bản', 'Dữ liệu test', 'Các bước', 'Kết quả mong đợi', 'Ghi chú'];
+    const data = [headers];
+    
+    window.generatedTestCases.forEach(testCase => {
+        const row = [
+            testCase.id || '',
+            testCase.purpose || '',
+            testCase.scenerio || '',
+            testCase.test_data || '',
+            (testCase.steps || []).join('\n'),
+            (testCase.expected || []).join('\n'),
+            testCase.note || ''
+        ];
+        data.push(row);
+    });
+    
+    // Convert to CSV format
+    const csvContent = data.map(row => 
+        row.map(field => `"${String(field).replace(/"/g, '""')}"`)
+           .join(',')
+    ).join('\n');
+    
+    // Add BOM for UTF-8 encoding
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `test_cases_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

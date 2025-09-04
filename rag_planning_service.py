@@ -41,8 +41,8 @@ class RAGPlanningService:
                 return {"success": False, "error": "Failed to initialize planning service"}
         
         try:
-            # Optimize input size for planning step
-            optimized_doc = self._optimize_documentation_for_planning(api_documentation)
+            # Use full documentation for planning - no truncation
+            # optimized_doc = self._optimize_documentation_for_planning(api_documentation)
             
             # Planning prompt template
             planning_prompt = """Bạn là chuyên gia phân tích API để lập kế hoạch tạo test case. Nhiệm vụ của bạn là phân tích tài liệu API và tạo kế hoạch chi tiết.
@@ -52,34 +52,46 @@ class RAGPlanningService:
 
 ## YÊU CẦU PHÂN TÍCH:
 
-1. **Tạo phiên bản kết hợp của tài liệu** - loại bỏ thông tin trùng lặp, tổng hợp các phần liên quan
-2. **Ước tính số lượng calls cần thiết** - dựa trên độ phức tạp và số lượng endpoint/business flow
-3. **Xác định nội dung cho từng call** - chia nhỏ thành các phần logic có thể xử lý độc lập
+1. **Ước tính số lượng calls cần thiết** - dựa trên độ phức tạp và số lượng business flow
+2. **Nhóm theo business flow logic** - chia thành các nhóm chức năng nghiệp vụ có liên quan
+3. **Xác định focus area cho từng call** - mỗi call tập trung vào một nhóm business logic cụ thể
+
+## NGUYÊN TẮC QUAN TRỌNG:
+- **TUYỆT ĐỐI KHÔNG tạo test case validation** - không bao gồm input validation, format validation, required field validation
+- **CHỈ tập trung vào business logic** - các luồng nghiệp vụ, xử lý dữ liệu, tích hợp hệ thống, business rules
+- **Nhóm theo flow nghiệp vụ** - ví dụ: flag check → product info check → overdraft check → transaction result update
+- **Loại trừ hoàn toàn**: field validation, data format checks, required parameter validation, input sanitization
 
 ## QUY TẮC CHIA NHỎ:
 - API với 30+ bước → khoảng 200-250 test case → chia thành ~5 calls
-- Mỗi call nên tập trung vào 1 business domain hoặc nhóm chức năng liên quan
-- Ví dụ nội dung call: "service flag, customer remain order", "payment processing", "error handling", v.v.
+- Mỗi call tập trung vào 1 business flow hoặc nhóm chức năng liên quan
+- Ví dụ nhóm flow: "flag verification flow", "product eligibility flow", "overdraft processing flow", "transaction completion flow"
 
 ## ĐỊNH DẠNG ĐẦU RA (JSON):
 ```json
 {{
-  "combined_documentation": "Phiên bản tài liệu đã được tối ưu, loại bỏ trùng lặp, tổng hợp thông tin",
   "estimated_calls_needed": 5,
   "generation_calls": [
     {{
       "call_id": 1,
-      "focus_area": "Authentication and User Management",
-      "description": "Tập trung vào các API liên quan đến xác thực, đăng nhập, quản lý user",
-      "content_scope": "login, logout, token validation, user profile APIs",
-      "estimated_test_cases": 40
+      "focus_area": "Service Flag and Initial Checks",
+      "description": "Luồng kiểm tra flag dịch vụ, trạng thái tài khoản, điều kiện ban đầu",
+      "content_scope": "service flags, account status checks, initial validations, prerequisite conditions",
+      "estimated_test_cases": 45
     }},
     {{
       "call_id": 2,
-      "focus_area": "Payment Processing",
-      "description": "Các API thanh toán, xử lý giao dịch, refund",
-      "content_scope": "payment APIs, transaction processing, refund logic",
+      "focus_area": "Product Information and Eligibility",
+      "description": "Luồng kiểm tra thông tin sản phẩm, điều kiện đủ điều kiện, quy tắc nghiệp vụ",
+      "content_scope": "product info retrieval, eligibility checks, business rules evaluation",
       "estimated_test_cases": 50
+    }},
+    {{
+      "call_id": 3,
+      "focus_area": "Overdraft Processing and State Management",
+      "description": "Luồng xử lý thấu chi, quản lý trạng thái, cập nhật số dư",
+      "content_scope": "overdraft calculations, state transitions, balance updates",
+      "estimated_test_cases": 55
     }}
   ],
   "total_estimated_test_cases": 250,
@@ -87,20 +99,22 @@ class RAGPlanningService:
     "total_endpoints": 15,
     "business_flows": 8,
     "complexity_level": "high",
-    "reasoning": "Lý do đánh giá độ phức tạp và cách chia nhỏ"
+    "reasoning": "Lý do đánh giá độ phức tạp và cách chia nhỏ theo business flow"
   }}
 }}
 ```
 
-Hãy phân tích tài liệu và trả về kế hoạch chi tiết theo định dạng JSON trên."""
+Hãy phân tích tài liệu và trả về kế hoạch chi tiết theo định dạng JSON trên. 
+
+**LƯU Ý QUAN TRỌNG**: TUYỆT ĐỐI KHÔNG bao gồm bất kỳ test case validation nào (input validation, format validation, required field validation). CHỈ tập trung vào business logic và luồng nghiệp vụ."""
 
             prompt_template = ChatPromptTemplate.from_template(planning_prompt)
             chain = prompt_template | self.llm | StrOutputParser()
             
-            logger.info(f"Creating generation plan for documentation (original: {len(api_documentation):,} chars, optimized: {len(optimized_doc):,} chars)")
+            logger.info(f"Creating generation plan for documentation ({len(api_documentation):,} chars - full document)")
             
             # Generate the plan
-            result = chain.invoke({"api_documentation": optimized_doc})
+            result = chain.invoke({"api_documentation": api_documentation})
             
             # Parse the JSON response
             try:
@@ -144,7 +158,6 @@ Hãy phân tích tài liệu và trả về kế hoạch chi tiết theo định
     def _validate_plan_structure(self, plan_data: Dict[str, Any]) -> bool:
         """Validate the structure of the generated plan"""
         required_fields = [
-            "combined_documentation",
             "estimated_calls_needed", 
             "generation_calls",
             "total_estimated_test_cases"
@@ -191,14 +204,12 @@ Hãy phân tích tài liệu và trả về kế hoạch chi tiết theo định
             if not target_call:
                 return {"success": False, "error": f"Call ID {call_id} not found in plan"}
             
-            # Get the combined documentation
-            combined_doc = plan.get("combined_documentation", "")
+            # Get the original documentation (no combined version needed)
             original_doc = plan.get("original_documentation", "")
             
             # Create focused context for this call
             call_context = {
-                "combined_documentation": combined_doc,
-                "original_documentation": original_doc,  # Add original docs for phase 2
+                "original_documentation": original_doc,  # Use original docs for phase 2
                 "focus_area": target_call.get("focus_area", ""),
                 "description": target_call.get("description", ""),
                 "content_scope": target_call.get("content_scope", ""),
