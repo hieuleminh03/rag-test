@@ -55,6 +55,89 @@ app, test_case_service, api_doc_service, coverage_service, export_service, excel
 # Global storage for uploaded files (in production, use Redis or database)
 uploaded_files = {}
 
+def process_uploaded_file(file):
+    """Process uploaded file and extract text content"""
+    try:
+        filename = file.filename.lower()
+        
+        # Read file content
+        file_content = file.read()
+        file.seek(0)  # Reset file pointer for potential re-reading
+        
+        # Process based on file extension
+        if filename.endswith('.txt') or filename.endswith('.md'):
+            # Plain text files
+            try:
+                content = file_content.decode('utf-8')
+            except UnicodeDecodeError:
+                content = file_content.decode('utf-8', errors='ignore')
+            return content.strip()
+            
+        elif filename.endswith('.pdf'):
+            # PDF files
+            try:
+                import PyPDF2
+                from io import BytesIO
+                
+                pdf_reader = PyPDF2.PdfReader(BytesIO(file_content))
+                text = ""
+                for page in pdf_reader.pages:
+                    text += page.extract_text() + "\n"
+                return text.strip()
+            except ImportError:
+                logger.warning("PyPDF2 not installed, cannot process PDF files")
+                return None
+            except Exception as e:
+                logger.error(f"Error processing PDF: {e}")
+                return None
+                
+        elif filename.endswith(('.doc', '.docx')):
+            # Word documents
+            try:
+                import docx
+                from io import BytesIO
+                
+                doc = docx.Document(BytesIO(file_content))
+                text = ""
+                for paragraph in doc.paragraphs:
+                    text += paragraph.text + "\n"
+                return text.strip()
+            except ImportError:
+                logger.warning("python-docx not installed, cannot process Word documents")
+                return None
+            except Exception as e:
+                logger.error(f"Error processing Word document: {e}")
+                return None
+                
+        elif filename.endswith('.json'):
+            # JSON files
+            try:
+                import json
+                content = file_content.decode('utf-8')
+                # Validate JSON and return formatted
+                json_data = json.loads(content)
+                return json.dumps(json_data, indent=2, ensure_ascii=False)
+            except Exception as e:
+                logger.error(f"Error processing JSON: {e}")
+                return content.decode('utf-8', errors='ignore')
+                
+        else:
+            # Try to read as text for other file types
+            try:
+                content = file_content.decode('utf-8')
+                return content.strip()
+            except UnicodeDecodeError:
+                try:
+                    content = file_content.decode('utf-8', errors='ignore')
+                    return content.strip()
+                except Exception as e:
+                    logger.error(f"Error processing file as text: {e}")
+                    return None
+                    
+    except Exception as e:
+        logger.error(f"Error processing uploaded file {file.filename}: {e}")
+        return None
+
 # Global cache for expensive operations
 _cache = {
     'api_doc': {'content': None, 'timestamp': 0},
@@ -401,6 +484,55 @@ def generate_with_plan():
     except Exception as e:
         logger.error(f"Error generating with plan: {e}")
         return jsonify(ErrorHandler.handle_generic_error(e)), 500
+
+@app.route('/upload-documents', methods=['POST'])
+def upload_documents():
+    """Upload and process multiple documents with document type separation"""
+    try:
+        if 'files' not in request.files:
+            return jsonify({'success': False, 'error': 'No files uploaded'}), 400
+        
+        files = request.files.getlist('files')
+        doc_type = request.form.get('doc_type', 'main')  # 'main' or 'reference'
+        
+        if not files or all(f.filename == '' for f in files):
+            return jsonify({'success': False, 'error': 'No files selected'}), 400
+        
+        processed_files = []
+        
+        for file in files:
+            if file.filename == '':
+                continue
+                
+            # Process each file
+            try:
+                content = process_uploaded_file(file)
+                if content:
+                    processed_files.append({
+                        'name': file.filename,
+                        'size': f"{len(content)} characters",
+                        'content': content,
+                        'type': doc_type
+                    })
+                else:
+                    logger.warning(f"No content extracted from {file.filename}")
+            except Exception as e:
+                logger.error(f"Error processing file {file.filename}: {e}")
+                continue
+        
+        if not processed_files:
+            return jsonify({'success': False, 'error': 'No valid content extracted from files'}), 400
+        
+        return jsonify({
+            'success': True,
+            'files': processed_files,
+            'doc_type': doc_type,
+            'message': f'Successfully processed {len(processed_files)} {doc_type} files'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error uploading documents: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/embed-documents', methods=['POST'])
 def embed_documents():

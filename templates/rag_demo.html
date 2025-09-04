@@ -19,14 +19,51 @@
             </div>
             <div class="card-body">
                 <form id="ragForm" enctype="multipart/form-data">
-                    <div class="mb-3">
-                        <label for="fileInput" class="form-label">Chọn tài liệu để phân tích:</label>
-                        <input type="file" class="form-control" id="fileInput" name="files" multiple 
-                               accept=".txt,.md,.json,.doc,.docx,.pdf" onchange="handleFileSelection()">
+                    <!-- Main Documents -->
+                    <div class="mb-4">
+                        <label for="mainFileInput" class="form-label">
+                            <i class="fas fa-star text-warning me-1"></i>
+                            <strong>Tài liệu chính</strong> (API Design, API Docs)
+                        </label>
+                        <input type="file" class="form-control" id="mainFileInput" name="main_files" multiple 
+                               accept=".txt,.md,.json,.doc,.docx,.pdf" onchange="handleMainFileSelection()">
                         <div class="form-text text-muted">
-                            <i class="fas fa-info-circle me-1"></i>
-                            Chọn nhiều file (API doc, business logic, error mapping, database schema). 
-                            Hỗ trợ: .txt, .md, .json, .doc, .docx, .pdf
+                            Tài liệu chính chứa thông số kỹ thuật và yêu cầu API
+                        </div>
+                        
+                        <div id="mainUploadStatus" class="mt-2" style="display: none;">
+                            <div class="progress">
+                                <div class="progress-bar bg-warning" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small class="text-muted mt-1 d-block">Đang xử lý tài liệu chính...</small>
+                        </div>
+                        
+                        <div id="mainFilesList" class="mt-2">
+                            <!-- Main files will appear here -->
+                        </div>
+                    </div>
+                    
+                    <!-- Reference Documents -->
+                    <div class="mb-3">
+                        <label for="refFileInput" class="form-label">
+                            <i class="fas fa-book text-info me-1"></i>
+                            <strong>Tài liệu tham khảo</strong> (Tùy chọn)
+                        </label>
+                        <input type="file" class="form-control" id="refFileInput" name="ref_files" multiple 
+                               accept=".txt,.md,.json,.doc,.docx,.pdf" onchange="handleRefFileSelection()">
+                        <div class="form-text text-muted">
+                            Tài liệu hỗ trợ, ví dụ hoặc tài liệu ngữ cảnh bổ sung
+                        </div>
+                        
+                        <div id="refUploadStatus" class="mt-2" style="display: none;">
+                            <div class="progress">
+                                <div class="progress-bar bg-info" role="progressbar" style="width: 0%"></div>
+                            </div>
+                            <small class="text-muted mt-1 d-block">Đang xử lý tài liệu tham khảo...</small>
+                        </div>
+                        
+                        <div id="refFilesList" class="mt-2">
+                            <!-- Reference files will appear here -->
                         </div>
                     </div>
                     
@@ -365,9 +402,9 @@ function loadActivePromptInfo() {
     fetch('/api/prompts/active')
         .then(response => response.json())
         .then(data => {
-            if (data.success) {
+            if (data.success && data.prompt) {
                 const prompt = data.prompt;
-                const promptName = prompt.name;
+                const promptName = prompt.name || 'Default Template';
                 const promptType = prompt.is_system ? 'System' : 'Custom';
                 
                 document.getElementById('activePromptName').innerHTML = 
@@ -376,12 +413,17 @@ function loadActivePromptInfo() {
                 currentPromptType = prompt.is_system ? 'default' : 'custom';
                 updatePromptIndicator();
             } else {
-                document.getElementById('activePromptName').textContent = 'Lỗi tải thông tin prompt';
+                console.error('Failed to load active prompt:', data.error || 'No prompt data');
+                document.getElementById('activePromptName').textContent = 'Default Template';
+                currentPromptType = 'default';
+                updatePromptIndicator();
             }
         })
         .catch(error => {
             console.error('Error loading active prompt info:', error);
-            document.getElementById('activePromptName').textContent = 'Lỗi kết nối';
+            document.getElementById('activePromptName').textContent = 'Default Template';
+            currentPromptType = 'default';
+            updatePromptIndicator();
         });
 }
 
@@ -519,47 +561,120 @@ function updatePromptIndicator() {
 }
 
 // File handling functions
-let selectedFiles = [];
-let fileContents = {};
+let mainDocuments = [];
+let referenceDocuments = [];
 
-function handleFileSelection() {
-    const fileInput = document.getElementById('fileInput');
+function handleMainFileSelection() {
+    const fileInput = document.getElementById('mainFileInput');
     const files = Array.from(fileInput.files);
     
     if (files.length === 0) {
-        document.getElementById('filePreviewArea').style.display = 'none';
-        selectedFiles = [];
-        fileContents = {};
+        mainDocuments = [];
+        document.getElementById('mainFilesList').innerHTML = '';
+        updateCombinedContent();
         return;
     }
     
-    selectedFiles = files;
-    displayFileList();
-    document.getElementById('filePreviewArea').style.display = 'block';
+    // Show upload status
+    document.getElementById('mainUploadStatus').style.display = 'block';
     
-    // Read all files
-    readAllFiles();
+    // Process main files
+    processFiles(files, 'main');
 }
 
-function displayFileList() {
-    const fileList = document.getElementById('fileList');
-    fileList.innerHTML = '';
+function handleRefFileSelection() {
+    const fileInput = document.getElementById('refFileInput');
+    const files = Array.from(fileInput.files);
     
-    selectedFiles.forEach((file, index) => {
-        const fileItem = document.createElement('div');
-        fileItem.className = 'file-item d-flex justify-content-between align-items-center mb-2 p-2 border rounded';
-        fileItem.innerHTML = `
-            <div>
-                <i class="fas fa-file me-2"></i>
-                <strong>${file.name}</strong>
-                <small class="text-muted ms-2">(${formatFileSize(file.size)})</small>
-            </div>
-            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeFile(${index})">
-                <i class="fas fa-times"></i>
-            </button>
-        `;
-        fileList.appendChild(fileItem);
+    if (files.length === 0) {
+        referenceDocuments = [];
+        document.getElementById('refFilesList').innerHTML = '';
+        updateCombinedContent();
+        return;
+    }
+    
+    // Show upload status
+    document.getElementById('refUploadStatus').style.display = 'block';
+    
+    // Process reference files
+    processFiles(files, 'reference');
+}
+
+function processFiles(files, docType) {
+    const formData = new FormData();
+    
+    for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+    }
+    formData.append('doc_type', docType);
+    
+    fetch('/upload-documents', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        // Hide upload status
+        if (docType === 'main') {
+            document.getElementById('mainUploadStatus').style.display = 'none';
+        } else {
+            document.getElementById('refUploadStatus').style.display = 'none';
+        }
+        
+        if (data.success) {
+            if (docType === 'main') {
+                mainDocuments = data.files;
+                displayFileList(data.files, 'mainFilesList', 'main');
+            } else {
+                referenceDocuments = data.files;
+                displayFileList(data.files, 'refFilesList', 'reference');
+            }
+            updateCombinedContent();
+        } else {
+            alert('Error uploading files: ' + data.error);
+        }
+    })
+    .catch(error => {
+        // Hide upload status
+        if (docType === 'main') {
+            document.getElementById('mainUploadStatus').style.display = 'none';
+        } else {
+            document.getElementById('refUploadStatus').style.display = 'none';
+        }
+        alert('Error uploading files: ' + error);
     });
+}
+
+function displayFileList(files, containerId, docType) {
+    const fileList = document.getElementById(containerId);
+    if (!files || files.length === 0) {
+        fileList.innerHTML = '';
+        return;
+    }
+    
+    const isMain = docType === 'main';
+    const iconClass = isMain ? 'fas fa-star text-warning' : 'fas fa-book text-info';
+    const badgeClass = isMain ? 'bg-warning' : 'bg-info';
+    
+    let html = `<div class="mt-2"><small class="text-muted">${isMain ? 'Tài liệu chính' : 'Tài liệu tham khảo'}:</small>`;
+    
+    files.forEach((file, index) => {
+        html += `
+            <div class="file-item d-flex justify-content-between align-items-center mb-2 p-2 border rounded">
+                <div>
+                    <i class="${iconClass} me-2"></i>
+                    <strong>${file.name}</strong>
+                    <small class="text-muted ms-2">(${file.size})</small>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeFile('${docType}', ${index})">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    fileList.innerHTML = html;
 }
 
 function formatFileSize(bytes) {
@@ -570,63 +685,76 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-function removeFile(index) {
-    selectedFiles.splice(index, 1);
-    delete fileContents[index];
-    
-    if (selectedFiles.length === 0) {
-        document.getElementById('filePreviewArea').style.display = 'none';
-        document.getElementById('fileInput').value = '';
+function removeFile(docType, index) {
+    if (docType === 'main') {
+        mainDocuments.splice(index, 1);
+        displayFileList(mainDocuments, 'mainFilesList', 'main');
+        if (mainDocuments.length === 0) {
+            document.getElementById('mainFileInput').value = '';
+        }
     } else {
-        displayFileList();
+        referenceDocuments.splice(index, 1);
+        displayFileList(referenceDocuments, 'refFilesList', 'reference');
+        if (referenceDocuments.length === 0) {
+            document.getElementById('refFileInput').value = '';
+        }
     }
+    updateCombinedContent();
 }
 
 function clearFiles() {
-    selectedFiles = [];
-    fileContents = {};
-    document.getElementById('fileInput').value = '';
-    document.getElementById('filePreviewArea').style.display = 'none';
+    mainDocuments = [];
+    referenceDocuments = [];
+    document.getElementById('mainFileInput').value = '';
+    document.getElementById('refFileInput').value = '';
+    document.getElementById('mainFilesList').innerHTML = '';
+    document.getElementById('refFilesList').innerHTML = '';
     document.getElementById('apiInput').value = '';
-}
-
-function readAllFiles() {
-    const promises = selectedFiles.map((file, index) => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                fileContents[index] = {
-                    name: file.name,
-                    content: e.target.result,
-                    type: file.type
-                };
-                resolve();
-            };
-            reader.onerror = reject;
-            reader.readAsText(file);
-        });
-    });
-    
-    Promise.all(promises).then(() => {
-        console.log('All files read successfully');
-        updateCombinedContent();
-    }).catch(error => {
-        console.error('Error reading files:', error);
-        alert('Lỗi khi đọc file: ' + error.message);
-    });
+    document.getElementById('filePreviewArea').style.display = 'none';
 }
 
 function updateCombinedContent() {
     let combinedContent = '';
     
-    Object.values(fileContents).forEach(file => {
-        combinedContent += `\n\n=== FILE: ${file.name} ===\n\n`;
-        combinedContent += file.content;
-        combinedContent += `\n\n=== END OF ${file.name} ===\n\n`;
-    });
+    // Add main documents section
+    if (mainDocuments.length > 0) {
+        combinedContent += '# MAIN DOCUMENTS\n';
+        combinedContent += '# These are the primary documents you need to work on for test case generation\n\n';
+        
+        mainDocuments.forEach(doc => {
+            combinedContent += `## ${doc.name}\n`;
+            combinedContent += `${doc.content}\n\n`;
+        });
+    }
     
-    document.getElementById('apiInput').value = combinedContent.trim();
+    // Add reference documents section
+    if (referenceDocuments.length > 0) {
+        combinedContent += '\n# REFERENCE DOCUMENTS\n';
+        combinedContent += '# These are supporting documents for additional context if needed\n\n';
+        
+        referenceDocuments.forEach(doc => {
+            combinedContent += `## ${doc.name}\n`;
+            combinedContent += `${doc.content}\n\n`;
+        });
+    }
+    
+    document.getElementById('apiInput').value = combinedContent;
+    
+    // Show/hide file preview area
+    if (mainDocuments.length > 0 || referenceDocuments.length > 0) {
+        document.getElementById('filePreviewArea').style.display = 'block';
+    } else {
+        document.getElementById('filePreviewArea').style.display = 'none';
+    }
 }
+
+// Legacy function for backward compatibility
+function handleFileSelection() {
+    // Redirect to main file selection for backward compatibility
+    handleMainFileSelection();
+}
+
+// Removed old updateCombinedContent function - using the new two-file system version above
 
 function previewContent() {
     const content = document.getElementById('apiInput').value;
