@@ -116,7 +116,7 @@ class RAGService:
             self.is_embedded = False
     
     def load_test_case_documents(self, test_case_service=None) -> List[Document]:
-        """Load test case data from database and convert to documents"""
+        """Load test case data from database and convert to documents with size optimization"""
         try:
             # Import here to avoid circular imports
             if test_case_service is None:
@@ -136,35 +136,67 @@ class RAGService:
                 test_case_dict = test_case.to_dict() if hasattr(test_case, 'to_dict') else test_case.__dict__
                 
                 test_case_id = test_case_dict.get('id', '')
-                content = f"""
-Test Case Identifier: {test_case_id}
-Purpose: {test_case_dict.get('purpose', '')}
-Scenario: {test_case_dict.get('scenerio', '')}
-Test Data: {test_case_dict.get('test_data', '')}
-Steps: {' | '.join(test_case_dict.get('steps', []))}
-Expected Results: {' | '.join(test_case_dict.get('expected', []))}
-Note: {test_case_dict.get('note', '')}
-                """.strip()
+                
+                # Optimize content by truncating long fields and using concise format
+                purpose = self._truncate_text(test_case_dict.get('purpose', ''), 200)
+                scenario = self._truncate_text(test_case_dict.get('scenerio', ''), 200)
+                test_data = self._truncate_text(test_case_dict.get('test_data', ''), 150)
+                
+                # Limit and truncate steps and expected results
+                steps = test_case_dict.get('steps', [])[:5]  # Max 5 steps
+                steps_text = ' | '.join([self._truncate_text(step, 100) for step in steps])
+                
+                expected = test_case_dict.get('expected', [])[:5]  # Max 5 expected results
+                expected_text = ' | '.join([self._truncate_text(exp, 100) for exp in expected])
+                
+                note = self._truncate_text(test_case_dict.get('note', ''), 100)
+                
+                # Create optimized content with size limit
+                content = f"""ID: {test_case_id}
+Purpose: {purpose}
+Scenario: {scenario}
+Test Data: {test_data}
+Steps: {steps_text}
+Expected: {expected_text}
+Note: {note}""".strip()
+                
+                # Ensure document doesn't exceed reasonable size (max 1500 chars per document)
+                if len(content) > 1500:
+                    content = content[:1500] + "..."
+                    logger.debug(f"Truncated content for test case {test_case_id} to fit size limit")
                 
                 # Create document with metadata
                 doc = Document(
                     page_content=content,
                     metadata={
                         'test_case_id': test_case_id,
-                        'purpose': test_case_dict.get('purpose', ''),
-                        'scenario': test_case_dict.get('scenerio', ''),
-                        'test_data': test_case_dict.get('test_data', ''),
+                        'purpose': purpose[:100],  # Truncate metadata too
+                        'scenario': scenario[:100],
+                        'test_data': test_data[:100],
                         'source': 'database'
                     }
                 )
                 documents.append(doc)
             
+            # Log size information
+            total_content_size = sum(len(doc.page_content) for doc in documents)
             logger.info(f"Loaded {len(documents)} test case documents from database")
+            logger.info(f"Total content size: {total_content_size:,} characters ({total_content_size/1024:.1f} KB)")
+            
             return documents
             
         except Exception as e:
             logger.error(f"Error loading test case documents from database: {e}")
             return []
+    
+    def _truncate_text(self, text: str, max_length: int) -> str:
+        """Truncate text to maximum length with ellipsis"""
+        if not text:
+            return ""
+        text = str(text).strip()
+        if len(text) <= max_length:
+            return text
+        return text[:max_length-3] + "..."
     
     def embed_documents(self, progress_callback=None, test_case_service=None) -> Dict[str, Any]:
         """Embed test case documents into vector store with progress tracking"""
@@ -179,45 +211,79 @@ Note: {test_case_dict.get('note', '')}
             if not documents:
                 return {"success": False, "error": "No test cases found in database. Please add some test cases first."}
             
-            # Process in large batches for speed - much faster embedding
-            batch_size = 50  # Much larger batches for speed
+            # Process in smaller batches to avoid payload size limits
+            # Start with small batches and adjust based on content size
+            total_content_size = sum(len(doc.page_content) for doc in documents)
+            avg_doc_size = total_content_size / len(documents) if documents else 0
+            
+            # Calculate optimal batch size based on content size
+            # Target max 20KB per batch to stay well under 36KB limit
+            target_batch_size_bytes = 20000
+            optimal_batch_size = max(1, min(10, int(target_batch_size_bytes / max(avg_doc_size, 1))))
+            
+            batch_size = optimal_batch_size
             total_docs = len(documents)
             total_batches = (total_docs + batch_size - 1) // batch_size
             
             embedded_count = 0
             errors = []
             
-            logger.info(f"🚀 Fast embedding: {total_docs} documents in {total_batches} large batches")
+            logger.info(f"🚀 Optimized embedding: {total_docs} documents in {total_batches} batches")
+            logger.info(f"📊 Avg doc size: {avg_doc_size:.0f} chars, batch size: {batch_size}")
             
             for i in range(0, total_docs, batch_size):
                 batch_end = min(i + batch_size, total_docs)
                 batch_docs = documents[i:batch_end]
                 batch_num = i // batch_size + 1
                 
-                logger.info(f"⚡ Processing large batch {batch_num}/{total_batches} ({len(batch_docs)} docs)")
+                # Calculate batch content size
+                batch_content_size = sum(len(doc.page_content) for doc in batch_docs)
+                
+                logger.info(f"⚡ Processing batch {batch_num}/{total_batches} ({len(batch_docs)} docs, {batch_content_size:,} chars)")
                 
                 try:
-                    # Add entire batch at once for maximum speed
-                    self.vectorstore.add_documents(batch_docs)
-                    embedded_count += len(batch_docs)
-                    logger.info(f"✅ Batch {batch_num} completed: {len(batch_docs)} documents embedded")
+                    # Check if batch is too large and split if necessary
+                    if batch_content_size > 25000:  # Conservative limit
+                        logger.warning(f"Batch {batch_num} too large ({batch_content_size:,} chars), processing individually")
+                        # Process documents one by one
+                        for doc in batch_docs:
+                            try:
+                                self.vectorstore.add_documents([doc])
+                                embedded_count += 1
+                                time.sleep(0.1)  # Small delay between individual docs
+                            except Exception as doc_e:
+                                logger.warning(f"Failed to add document {doc.metadata.get('test_case_id', 'unknown')}: {doc_e}")
+                                errors.append(f"Document {doc.metadata.get('test_case_id', 'unknown')}: {doc_e}")
+                    else:
+                        # Add batch at once
+                        self.vectorstore.add_documents(batch_docs)
+                        embedded_count += len(batch_docs)
+                        logger.info(f"✅ Batch {batch_num} completed: {len(batch_docs)} documents embedded")
                     
-                    # Minimal delay only between large batches
+                    # Delay between batches to avoid rate limiting
                     if batch_end < total_docs:
-                        time.sleep(0.5)  # Very short delay
+                        time.sleep(1.0)  # Longer delay to be safe
                         
                 except Exception as e:
                     # If batch fails, try individual documents as fallback
-                    logger.warning(f"Batch {batch_num} failed, trying individual documents: {e}")
+                    logger.warning(f"Batch {batch_num} failed ({str(e)[:100]}...), trying individual documents")
                     for doc in batch_docs:
                         try:
+                            # Check individual document size
+                            doc_size = len(doc.page_content)
+                            if doc_size > 30000:  # Very large document
+                                logger.warning(f"Document {doc.metadata.get('test_case_id', 'unknown')} too large ({doc_size:,} chars), skipping")
+                                errors.append(f"Document {doc.metadata.get('test_case_id', 'unknown')} too large: {doc_size:,} chars")
+                                continue
+                            
                             self.vectorstore.add_documents([doc])
                             embedded_count += 1
+                            time.sleep(0.2)  # Small delay between individual docs
                         except Exception as doc_e:
-                            logger.warning(f"Failed to add document: {doc_e}")
-                            errors.append(f"Document error: {doc_e}")
+                            logger.warning(f"Failed to add document {doc.metadata.get('test_case_id', 'unknown')}: {doc_e}")
+                            errors.append(f"Document {doc.metadata.get('test_case_id', 'unknown')}: {doc_e}")
                     
-                    logger.info(f"⚠️ Batch {batch_num} completed with fallback method")
+                    logger.info(f"⚠️ Batch {batch_num} completed with individual processing")
             
             # Setup retriever and workflow if embedding was successful
             if embedded_count > 0:
@@ -252,8 +318,31 @@ Note: {test_case_dict.get('note', '')}
             question = state["question"]
             documents = state["documents"]
             
-            # Complete context
-            context = "\n\n".join([doc.page_content for doc in documents])
+            # Build context with size optimization
+            context_parts = []
+            total_context_size = 0
+            max_context_size = 15000  # Conservative limit for context
+            
+            for doc in documents:
+                doc_content = doc.page_content
+                if total_context_size + len(doc_content) + 2 <= max_context_size:  # +2 for \n\n
+                    context_parts.append(doc_content)
+                    total_context_size += len(doc_content) + 2
+                else:
+                    # Try to fit a truncated version
+                    remaining_space = max_context_size - total_context_size - 2
+                    if remaining_space > 100:  # Only if we have meaningful space left
+                        truncated_content = doc_content[:remaining_space-3] + "..."
+                        context_parts.append(truncated_content)
+                    break
+            
+            context = "\n\n".join(context_parts)
+            
+            # Add truncation notice if we had to truncate
+            if len(documents) > len(context_parts) or any("..." in part for part in context_parts):
+                context += "\n\n[Note: Some context was truncated to fit size limits]"
+            
+            logger.info(f"Context built: {len(context_parts)}/{len(documents)} documents, {len(context):,} chars")
             
             # Use custom prompt if provided, otherwise use Vietnamese default
             if custom_prompt_template:
@@ -263,17 +352,43 @@ Note: {test_case_dict.get('note', '')}
                 template = VIETNAMESE_RAG_PROMPT_TEMPLATE
             prompt = ChatPromptTemplate.from_template(template)
             
-            # Complete context
-            context = "\n\n".join([doc.page_content for doc in documents])
-            
             # RAG chain
             rag_chain = prompt | self.llm | StrOutputParser()
             
             # Build the final prompt for logging/debugging
-            final_prompt_text = template.format(context=context, question=question)
+            try:
+                final_prompt_text = template.format(context=context, question=question)
+                
+                # Check final prompt size and truncate if necessary
+                if len(final_prompt_text) > 30000:  # Very conservative limit
+                    logger.warning(f"Final prompt too large ({len(final_prompt_text):,} chars), truncating")
+                    # Try to reduce context further
+                    max_context_for_prompt = 10000
+                    if len(context) > max_context_for_prompt:
+                        context = context[:max_context_for_prompt] + "\n\n[Context truncated for prompt size limits]"
+                        final_prompt_text = template.format(context=context, question=question)
+                
+            except Exception as e:
+                logger.warning(f"Error formatting prompt: {e}")
+                final_prompt_text = f"Error formatting prompt: {str(e)}"
             
-            # Invoke
-            generation = rag_chain.invoke({"context": context, "question": question})
+            # Invoke with error handling
+            try:
+                generation = rag_chain.invoke({"context": context, "question": question})
+            except Exception as e:
+                logger.error(f"Error invoking RAG chain: {e}")
+                # Try with even smaller context
+                if len(context) > 5000:
+                    logger.info("Retrying with smaller context...")
+                    context = context[:5000] + "\n\n[Context further reduced due to processing limits]"
+                    try:
+                        generation = rag_chain.invoke({"context": context, "question": question})
+                    except Exception as e2:
+                        logger.error(f"Error even with reduced context: {e2}")
+                        generation = f"Error generating response: {str(e2)}"
+                else:
+                    generation = f"Error generating response: {str(e)}"
+            
             return {
                 "question": question, 
                 "documents": documents, 
@@ -292,7 +407,7 @@ Note: {test_case_dict.get('note', '')}
         self.app = workflow.compile()
     
     def generate_test_cases(self, api_documentation: str, custom_prompt: str = None) -> Dict[str, Any]:
-        """Generate test cases using RAG analysis"""
+        """Generate test cases using RAG analysis with input size optimization"""
         if not self.is_initialized:
             return {"success": False, "error": "RAG service not initialized"}
         
@@ -300,7 +415,20 @@ Note: {test_case_dict.get('note', '')}
             return {"success": False, "error": "Documents not embedded. Please embed documents first."}
         
         try:
-            query = f"Generate test cases for this API documentation:\n\n{api_documentation}"
+            # Optimize API documentation input size
+            api_doc_optimized = self._optimize_api_documentation(api_documentation)
+            
+            query = f"Generate test cases for this API documentation:\n\n{api_doc_optimized}"
+            
+            # Check total query size and truncate if necessary
+            if len(query) > 25000:  # Conservative limit for query
+                logger.warning(f"Query too large ({len(query):,} chars), truncating to fit limits")
+                # Keep the instruction and truncate the API doc part
+                instruction = "Generate test cases for this API documentation:\n\n"
+                max_api_doc_size = 25000 - len(instruction) - 100  # Leave some buffer
+                truncated_api_doc = api_doc_optimized[:max_api_doc_size] + "\n\n[Content truncated due to size limits]"
+                query = instruction + truncated_api_doc
+            
             inputs = {"question": query}
             
             # If custom prompt is provided, update the workflow
@@ -308,7 +436,7 @@ Note: {test_case_dict.get('note', '')}
                 logger.info("Using custom prompt for test case generation")
                 self._setup_workflow(custom_prompt)
             
-            logger.info("Generating test cases using RAG...")
+            logger.info(f"Generating test cases using RAG... (query size: {len(query):,} chars)")
             result = None
             final_prompt = None
             context_used = None
@@ -327,12 +455,12 @@ Note: {test_case_dict.get('note', '')}
                 test_cases = self._parse_generated_test_cases(result)
                 logger.info(f"Parsed {len(test_cases)} test cases from response")
                 
-                # Log the final prompt and context for debugging
+                # Log the final prompt and context for debugging (truncated for logs)
                 if final_prompt:
                     logger.info("=" * 80)
                     logger.info("🔍 FINAL PROMPT SENT TO LLM:")
                     logger.info("=" * 80)
-                    logger.info(final_prompt)
+                    logger.info(final_prompt[:2000] + "..." if len(final_prompt) > 2000 else final_prompt)
                     logger.info("=" * 80)
                 
                 if context_used:
@@ -346,6 +474,7 @@ Note: {test_case_dict.get('note', '')}
                 logger.info(f"   - Custom Prompt Used: {'Yes' if custom_prompt else 'No'}")
                 logger.info(f"   - Context Length: {len(context_used) if context_used else 0} characters")
                 logger.info(f"   - Final Prompt Length: {len(final_prompt) if final_prompt else 0} characters")
+                logger.info(f"   - API Doc Size (optimized): {len(api_doc_optimized):,} characters")
                 
                 return {
                     "success": True,
@@ -354,7 +483,8 @@ Note: {test_case_dict.get('note', '')}
                     "final_prompt": final_prompt,
                     "context_used": context_used,
                     "message": f"Đã tạo {len(test_cases)} Test Case bằng RAG analysis" + (" (với prompt tùy chỉnh)" if custom_prompt else ""),
-                    "used_custom_prompt": bool(custom_prompt)
+                    "used_custom_prompt": bool(custom_prompt),
+                    "input_optimized": len(api_documentation) != len(api_doc_optimized)
                 }
             else:
                 return {"success": False, "error": "No response generated"}
@@ -363,8 +493,56 @@ Note: {test_case_dict.get('note', '')}
             logger.error(f"Error generating test cases: {e}")
             return {"success": False, "error": str(e)}
     
+    def _optimize_api_documentation(self, api_doc: str) -> str:
+        """Optimize API documentation to reduce size while preserving important information"""
+        if not api_doc or len(api_doc) <= 15000:  # If already small enough, return as-is
+            return api_doc
+        
+        logger.info(f"Optimizing API documentation (original size: {len(api_doc):,} chars)")
+        
+        # Split into lines for processing
+        lines = api_doc.split('\n')
+        optimized_lines = []
+        current_size = 0
+        max_size = 15000  # Target size
+        
+        # Prioritize certain types of content
+        priority_keywords = [
+            'endpoint', 'api', 'method', 'parameter', 'request', 'response', 
+            'error', 'status', 'code', 'example', 'authentication', 'authorization',
+            'POST', 'GET', 'PUT', 'DELETE', 'PATCH', 'HTTP', 'JSON', 'XML'
+        ]
+        
+        # First pass: include high-priority lines
+        for line in lines:
+            line_lower = line.lower()
+            if any(keyword in line_lower for keyword in priority_keywords):
+                if current_size + len(line) + 1 <= max_size:
+                    optimized_lines.append(line)
+                    current_size += len(line) + 1
+                else:
+                    break
+        
+        # Second pass: fill remaining space with other content
+        if current_size < max_size:
+            for line in lines:
+                if line not in optimized_lines:
+                    if current_size + len(line) + 1 <= max_size:
+                        optimized_lines.append(line)
+                        current_size += len(line) + 1
+                    else:
+                        break
+        
+        optimized_doc = '\n'.join(optimized_lines)
+        
+        if len(optimized_doc) < len(api_doc):
+            optimized_doc += "\n\n[Note: Content optimized for processing - some details may be truncated]"
+        
+        logger.info(f"API documentation optimized: {len(api_doc):,} -> {len(optimized_doc):,} chars")
+        return optimized_doc
+    
     def _parse_generated_test_cases(self, response: str) -> List[Dict[str, Any]]:
-        """Parse generated test cases from LLM response"""
+        """Parse generated test cases from LLM response with improved JSON extraction"""
         test_cases = []
         
         try:
@@ -373,74 +551,146 @@ Note: {test_case_dict.get('note', '')}
             # Try to extract JSON blocks from the response
             import re
             
-            # Try multiple JSON patterns
+            # Enhanced JSON patterns with better regex
             patterns = [
-                r'```json\s*(\[.*?\])\s*```',  # JSON arrays
-                r'```json\s*(\{.*?\})\s*```',  # Standard JSON blocks
-                r'```\s*(\[.*?\])\s*```',      # JSON arrays without 'json' label
-                r'```\s*(\{.*?\})\s*```',      # JSON blocks without 'json' label
-                r'(\{[^{}]*"id"[^{}]*\})',     # Simple JSON objects with id field
+                # JSON arrays in code blocks
+                (r'```(?:json)?\s*(\[[\s\S]*?\])\s*```', 'JSON array in code block'),
+                # Single JSON objects in code blocks  
+                (r'```(?:json)?\s*(\{[\s\S]*?\})\s*```', 'JSON object in code block'),
+                # JSON arrays without code blocks
+                (r'(\[[\s\S]*?\{[\s\S]*?"id"[\s\S]*?\}[\s\S]*?\])', 'JSON array without code block'),
+                # Multiple JSON objects (one per line or separated) - more flexible
+                (r'(\{[^{}]*?"id"[^{}]*?\})', 'Simple JSON objects'),
             ]
             
-            for pattern in patterns:
-                matches = re.findall(pattern, response, re.DOTALL)
-                logger.info(f"Pattern '{pattern}' found {len(matches)} matches")
+            for pattern, description in patterns:
+                matches = re.findall(pattern, response, re.DOTALL | re.IGNORECASE)
+                logger.info(f"Pattern '{description}' found {len(matches)} matches")
                 
-                for match in matches:
+                for i, match in enumerate(matches):
                     try:
-                        parsed_data = json.loads(match)
+                        # Clean up the match
+                        clean_match = match.strip()
+                        
+                        # Log the match for debugging
+                        logger.debug(f"Attempting to parse match {i+1}: {clean_match[:200]}...")
+                        
+                        parsed_data = json.loads(clean_match)
                         
                         # Handle both single objects and arrays
                         if isinstance(parsed_data, list):
                             for item in parsed_data:
-                                if self._validate_test_case_structure(item):
-                                    test_cases.append(item)
-                                    logger.info(f"Successfully parsed test case: {item.get('id', 'unknown')}")
+                                if isinstance(item, dict):
+                                    # Try to normalize first, then validate
+                                    try:
+                                        normalized_item = self._normalize_test_case(item)
+                                        if self._validate_test_case_structure(normalized_item):
+                                            test_cases.append(normalized_item)
+                                            logger.info(f"Successfully parsed test case: {normalized_item.get('id', 'unknown')}")
+                                    except Exception as norm_e:
+                                        logger.warning(f"Error normalizing test case: {norm_e}")
                         elif isinstance(parsed_data, dict):
-                            if self._validate_test_case_structure(parsed_data):
-                                test_cases.append(parsed_data)
-                                logger.info(f"Successfully parsed test case: {parsed_data.get('id', 'unknown')}")
+                            # Try to normalize first, then validate
+                            try:
+                                normalized_item = self._normalize_test_case(parsed_data)
+                                if self._validate_test_case_structure(normalized_item):
+                                    test_cases.append(normalized_item)
+                                    logger.info(f"Successfully parsed test case: {normalized_item.get('id', 'unknown')}")
+                            except Exception as norm_e:
+                                logger.warning(f"Error normalizing test case: {norm_e}")
+                                
                     except json.JSONDecodeError as e:
-                        logger.warning(f"JSON decode error for match: {e}")
+                        logger.warning(f"JSON decode error for match {i+1}: {e}")
+                        logger.debug(f"Failed match content: {match[:500]}...")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Error processing match {i+1}: {e}")
                         continue
                 
                 if test_cases:
+                    logger.info(f"Successfully extracted {len(test_cases)} test cases using pattern: {description}")
                     break  # Stop if we found valid test cases
             
             # If no JSON blocks found, try to find individual test cases in text format
             if not test_cases:
-                logger.info("No JSON found, trying text parsing")
-                lines = response.split('\n')
-                current_case = {}
-                
-                for line in lines:
-                    line = line.strip()
-                    if line.startswith('ID:') or line.startswith('Test Case ID:') or 'id":' in line.lower():
-                        if current_case and len(current_case) > 2:
-                            # Add default values for missing fields
-                            current_case.setdefault('steps', ['Manual test step'])
-                            current_case.setdefault('expected', ['Expected result'])
-                            current_case.setdefault('test_data', 'Test data')
-                            current_case.setdefault('note', 'Generated test case')
-                            test_cases.append(current_case)
-                        current_case = {'id': line.split(':', 1)[-1].strip().strip('"')}
-                    elif line.startswith('Purpose:') or 'purpose":' in line.lower():
-                        current_case['purpose'] = line.split(':', 1)[-1].strip().strip('"')
-                    elif line.startswith('Scenario:') or line.startswith('Scenerio:') or 'scenerio":' in line.lower():
-                        current_case['scenerio'] = line.split(':', 1)[-1].strip().strip('"')
-                
-                if current_case and len(current_case) > 2:
-                    current_case.setdefault('steps', ['Manual test step'])
-                    current_case.setdefault('expected', ['Expected result'])
-                    current_case.setdefault('test_data', 'Test data')
-                    current_case.setdefault('note', 'Generated test case')
-                    test_cases.append(current_case)
+                logger.info("No valid JSON found, trying text parsing")
+                test_cases = self._parse_text_format(response)
             
-            logger.info(f"Final parsing result: {len(test_cases)} test cases")
+            # Final validation and cleanup
+            valid_test_cases = []
+            for tc in test_cases:
+                if self._validate_test_case_structure(tc):
+                    valid_test_cases.append(tc)
+                else:
+                    logger.warning(f"Invalid test case structure: {tc}")
+            
+            logger.info(f"Final parsing result: {len(valid_test_cases)} valid test cases")
+            return valid_test_cases
             
         except Exception as e:
             logger.error(f"Error parsing test cases: {e}")
+            return []
+    
+    def _normalize_test_case(self, test_case: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize test case structure and ensure all required fields"""
+        normalized = {
+            'id': str(test_case.get('id', '')).strip(),
+            'purpose': str(test_case.get('purpose', '')).strip(),
+            'scenerio': str(test_case.get('scenerio', test_case.get('scenario', ''))).strip(),
+            'test_data': str(test_case.get('test_data', 'Test data')).strip(),
+            'steps': test_case.get('steps', ['Manual test step']),
+            'expected': test_case.get('expected', ['Expected result']),
+            'note': str(test_case.get('note', 'Generated test case')).strip()
+        }
         
+        # Ensure steps and expected are lists
+        if isinstance(normalized['steps'], str):
+            normalized['steps'] = [normalized['steps']]
+        if isinstance(normalized['expected'], str):
+            normalized['expected'] = [normalized['expected']]
+            
+        return normalized
+    
+    def _parse_text_format(self, response: str) -> List[Dict[str, Any]]:
+        """Parse test cases from text format when JSON parsing fails"""
+        test_cases = []
+        lines = response.split('\n')
+        current_case = {}
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Look for test case ID
+            if any(pattern in line.lower() for pattern in ['id:', 'test case id:', 'testcase id:']):
+                # Save previous case if it exists
+                if current_case and len(current_case) >= 3:
+                    test_cases.append(self._normalize_test_case(current_case))
+                
+                # Start new case
+                id_value = line.split(':', 1)[-1].strip().strip('"\'')
+                current_case = {'id': id_value}
+                
+            elif current_case:  # Only process if we have started a test case
+                if line.startswith('Purpose:') or 'purpose' in line.lower():
+                    current_case['purpose'] = line.split(':', 1)[-1].strip().strip('"\'')
+                elif any(pattern in line.lower() for pattern in ['scenario:', 'scenerio:']):
+                    current_case['scenerio'] = line.split(':', 1)[-1].strip().strip('"\'')
+                elif 'test data:' in line.lower():
+                    current_case['test_data'] = line.split(':', 1)[-1].strip().strip('"\'')
+                elif 'steps:' in line.lower():
+                    steps_text = line.split(':', 1)[-1].strip().strip('"\'')
+                    current_case['steps'] = [s.strip() for s in steps_text.split('|') if s.strip()]
+                elif 'expected:' in line.lower():
+                    expected_text = line.split(':', 1)[-1].strip().strip('"\'')
+                    current_case['expected'] = [e.strip() for e in expected_text.split('|') if e.strip()]
+                elif 'note:' in line.lower():
+                    current_case['note'] = line.split(':', 1)[-1].strip().strip('"\'')
+        
+        # Don't forget the last case
+        if current_case and len(current_case) >= 3:
+            test_cases.append(self._normalize_test_case(current_case))
+        
+        logger.info(f"Text parsing extracted {len(test_cases)} test cases")
         return test_cases
     
     def _validate_test_case_structure(self, test_case: Dict[str, Any]) -> bool:
