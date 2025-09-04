@@ -1,0 +1,591 @@
+{% extends "base.html" %}
+
+{% block title %}Prompt Manager - Quản lý Prompt{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h2><i class="fas fa-edit me-2"></i>Prompt Manager</h2>
+        <p class="text-muted mb-0">Quản lý các mẫu prompt cho RAG Test Case Generation</p>
+    </div>
+    <button type="button" class="btn btn-primary" onclick="showCreatePromptModal()">
+        <i class="fas fa-plus me-1"></i>Tạo Prompt Mới
+    </button>
+</div>
+
+<!-- Active Prompt Info -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-star me-2"></i>Prompt Đang Sử Dụng</h5>
+            </div>
+            <div class="card-body">
+                <div id="activePromptInfo">
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prompts List -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="fas fa-list me-2"></i>Danh Sách Prompt Templates</h5>
+            </div>
+            <div class="card-body">
+                <div id="promptsList">
+                    <div class="d-flex justify-content-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create/Edit Prompt Modal -->
+<div class="modal fade" id="promptModal" tabindex="-1" aria-labelledby="promptModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="promptModalLabel">
+                    <i class="fas fa-edit me-2"></i>Tạo Prompt Mới
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="promptForm">
+                    <input type="hidden" id="promptId" name="prompt_id">
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="promptName" class="form-label">Tên Prompt <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="promptName" name="name" required 
+                                   placeholder="Ví dụ: API Testing Prompt">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="promptDescription" class="form-label">Mô Tả</label>
+                            <input type="text" class="form-control" id="promptDescription" name="description" 
+                                   placeholder="Mô tả ngắn gọn về prompt này">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="promptContent" class="form-label">Nội Dung Prompt <span class="text-danger">*</span></label>
+                        <div class="mb-2">
+                            <small class="text-muted">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Sử dụng <code>{context}</code> và <code>{question}</code> làm placeholder cho RAG context và API documentation
+                            </small>
+                        </div>
+                        <textarea class="form-control" id="promptContent" name="content" rows="20" 
+                                  style="font-family: monospace; font-size: 12px;" required
+                                  placeholder="Nhập nội dung prompt ở đây..."></textarea>
+                        <div class="form-text">
+                            <span id="contentLength">0</span> ký tự
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" onclick="loadDefaultTemplate()">
+                    <i class="fas fa-file-import me-1"></i>Tải Template Mặc Định
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Hủy
+                </button>
+                <button type="button" class="btn btn-primary" onclick="savePrompt()">
+                    <i class="fas fa-save me-1"></i>Lưu Prompt
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Prompt Modal -->
+<div class="modal fade" id="viewPromptModal" tabindex="-1" aria-labelledby="viewPromptModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewPromptModalLabel">
+                    <i class="fas fa-eye me-2"></i>Xem Prompt
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <strong>Tên:</strong> <span id="viewPromptName"></span>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Mô tả:</strong> <span id="viewPromptDescription"></span>
+                    </div>
+                </div>
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <strong>Tạo lúc:</strong> <span id="viewPromptCreated"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Cập nhật:</strong> <span id="viewPromptUpdated"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <strong>Loại:</strong> <span id="viewPromptType"></span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label"><strong>Nội dung:</strong></label>
+                    <textarea class="form-control" id="viewPromptContent" rows="20" 
+                              style="font-family: monospace; font-size: 12px;" readonly></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-primary" onclick="copyPromptContent()">
+                    <i class="fas fa-copy me-1"></i>Sao Chép
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Đóng
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deletePromptModal" tabindex="-1" aria-labelledby="deletePromptModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deletePromptModalLabel">
+                    <i class="fas fa-trash me-2"></i>Xác Nhận Xóa
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Bạn có chắc chắn muốn xóa prompt "<strong id="deletePromptName"></strong>"?</p>
+                <p class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i>Hành động này không thể hoàn tác.</p>
+                <input type="hidden" id="deletePromptId">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-1"></i>Hủy
+                </button>
+                <button type="button" class="btn btn-danger" onclick="confirmDeletePrompt()">
+                    <i class="fas fa-trash me-1"></i>Xóa
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentPrompts = [];
+let isEditMode = false;
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    loadActivePrompt();
+    loadAllPrompts();
+    
+    // Update character count
+    document.getElementById('promptContent').addEventListener('input', updateCharacterCount);
+});
+
+function updateCharacterCount() {
+    const content = document.getElementById('promptContent').value;
+    document.getElementById('contentLength').textContent = content.length.toLocaleString();
+}
+
+function loadActivePrompt() {
+    fetch('/api/prompts/active')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayActivePrompt(data.prompt);
+            } else {
+                document.getElementById('activePromptInfo').innerHTML = 
+                    '<div class="alert alert-warning">Không thể tải thông tin prompt đang sử dụng</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading active prompt:', error);
+            document.getElementById('activePromptInfo').innerHTML = 
+                '<div class="alert alert-danger">Lỗi khi tải thông tin prompt</div>';
+        });
+}
+
+function displayActivePrompt(prompt) {
+    const typeLabel = prompt.is_system ? 
+        '<span class="badge bg-primary">System</span>' : 
+        '<span class="badge bg-success">Custom</span>';
+    
+    const html = `
+        <div class="row">
+            <div class="col-md-8">
+                <h5 class="mb-1">${prompt.name} ${typeLabel}</h5>
+                <p class="text-muted mb-2">${prompt.description || 'Không có mô tả'}</p>
+                <small class="text-muted">
+                    <i class="fas fa-clock me-1"></i>Cập nhật: ${formatDate(prompt.updated_at)} | 
+                    <i class="fas fa-file-text me-1"></i>Độ dài: ${prompt.content.length.toLocaleString()} ký tự
+                </small>
+            </div>
+            <div class="col-md-4 text-end">
+                <button class="btn btn-outline-primary btn-sm me-2" onclick="viewPrompt('${prompt.id}')">
+                    <i class="fas fa-eye me-1"></i>Xem
+                </button>
+                ${!prompt.is_system ? `
+                    <button class="btn btn-outline-warning btn-sm" onclick="editPrompt('${prompt.id}')">
+                        <i class="fas fa-edit me-1"></i>Sửa
+                    </button>
+                ` : ''}
+            </div>
+        </div>
+    `;
+    
+    document.getElementById('activePromptInfo').innerHTML = html;
+}
+
+function loadAllPrompts() {
+    fetch('/api/prompts')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                currentPrompts = data.prompts;
+                displayPromptsList(data.prompts);
+            } else {
+                document.getElementById('promptsList').innerHTML = 
+                    '<div class="alert alert-warning">Không thể tải danh sách prompt</div>';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading prompts:', error);
+            document.getElementById('promptsList').innerHTML = 
+                '<div class="alert alert-danger">Lỗi khi tải danh sách prompt</div>';
+        });
+}
+
+function displayPromptsList(prompts) {
+    if (prompts.length === 0) {
+        document.getElementById('promptsList').innerHTML = 
+            '<div class="text-center text-muted py-4">Chưa có prompt nào được tạo</div>';
+        return;
+    }
+    
+    const html = prompts.map(prompt => {
+        const typeLabel = prompt.is_system ? 
+            '<span class="badge bg-primary">System</span>' : 
+            '<span class="badge bg-success">Custom</span>';
+        
+        const isActive = prompt.id === (currentPrompts.find(p => p.is_active) || {}).id;
+        const activeLabel = isActive ? '<span class="badge bg-warning">Đang sử dụng</span>' : '';
+        
+        return `
+            <div class="card mb-3 ${isActive ? 'border-warning' : ''}">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h6 class="card-title mb-1">
+                                ${prompt.name} ${typeLabel} ${activeLabel}
+                            </h6>
+                            <p class="card-text text-muted mb-2">${prompt.description || 'Không có mô tả'}</p>
+                            <small class="text-muted">
+                                <i class="fas fa-clock me-1"></i>Tạo: ${formatDate(prompt.created_at)} | 
+                                <i class="fas fa-edit me-1"></i>Sửa: ${formatDate(prompt.updated_at)} | 
+                                <i class="fas fa-file-text me-1"></i>${prompt.content.length.toLocaleString()} ký tự
+                            </small>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <div class="btn-group" role="group">
+                                ${!isActive ? `
+                                    <button class="btn btn-outline-success btn-sm" onclick="setActivePrompt('${prompt.id}')" 
+                                            title="Sử dụng prompt này">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                ` : ''}
+                                <button class="btn btn-outline-primary btn-sm" onclick="viewPrompt('${prompt.id}')" 
+                                        title="Xem prompt">
+                                    <i class="fas fa-eye"></i>
+                                </button>
+                                ${!prompt.is_system ? `
+                                    <button class="btn btn-outline-warning btn-sm" onclick="editPrompt('${prompt.id}')" 
+                                            title="Sửa prompt">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-outline-info btn-sm" onclick="duplicatePrompt('${prompt.id}')" 
+                                            title="Nhân bản prompt">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm" onclick="deletePrompt('${prompt.id}', '${prompt.name}')" 
+                                            title="Xóa prompt">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                ` : `
+                                    <button class="btn btn-outline-info btn-sm" onclick="duplicatePrompt('${prompt.id}')" 
+                                            title="Nhân bản prompt">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    document.getElementById('promptsList').innerHTML = html;
+}
+
+function showCreatePromptModal() {
+    isEditMode = false;
+    document.getElementById('promptModalLabel').innerHTML = '<i class="fas fa-plus me-2"></i>Tạo Prompt Mới';
+    document.getElementById('promptForm').reset();
+    document.getElementById('promptId').value = '';
+    updateCharacterCount();
+    
+    const modal = new bootstrap.Modal(document.getElementById('promptModal'));
+    modal.show();
+}
+
+function editPrompt(promptId) {
+    const prompt = currentPrompts.find(p => p.id === promptId);
+    if (!prompt) {
+        alert('Không tìm thấy prompt');
+        return;
+    }
+    
+    if (prompt.is_system) {
+        alert('Không thể sửa system prompt');
+        return;
+    }
+    
+    isEditMode = true;
+    document.getElementById('promptModalLabel').innerHTML = '<i class="fas fa-edit me-2"></i>Sửa Prompt';
+    document.getElementById('promptId').value = prompt.id;
+    document.getElementById('promptName').value = prompt.name;
+    document.getElementById('promptDescription').value = prompt.description || '';
+    document.getElementById('promptContent').value = prompt.content;
+    updateCharacterCount();
+    
+    const modal = new bootstrap.Modal(document.getElementById('promptModal'));
+    modal.show();
+}
+
+function viewPrompt(promptId) {
+    const prompt = currentPrompts.find(p => p.id === promptId);
+    if (!prompt) {
+        alert('Không tìm thấy prompt');
+        return;
+    }
+    
+    document.getElementById('viewPromptName').textContent = prompt.name;
+    document.getElementById('viewPromptDescription').textContent = prompt.description || 'Không có mô tả';
+    document.getElementById('viewPromptCreated').textContent = formatDate(prompt.created_at);
+    document.getElementById('viewPromptUpdated').textContent = formatDate(prompt.updated_at);
+    document.getElementById('viewPromptType').innerHTML = prompt.is_system ? 
+        '<span class="badge bg-primary">System</span>' : 
+        '<span class="badge bg-success">Custom</span>';
+    document.getElementById('viewPromptContent').value = prompt.content;
+    
+    const modal = new bootstrap.Modal(document.getElementById('viewPromptModal'));
+    modal.show();
+}
+
+function savePrompt() {
+    const form = document.getElementById('promptForm');
+    const formData = new FormData(form);
+    
+    const promptData = {
+        name: formData.get('name'),
+        description: formData.get('description'),
+        content: formData.get('content')
+    };
+    
+    if (!promptData.name || !promptData.content) {
+        alert('Vui lòng nhập tên và nội dung prompt');
+        return;
+    }
+    
+    const url = isEditMode ? `/api/prompts/${formData.get('prompt_id')}` : '/api/prompts';
+    const method = isEditMode ? 'PUT' : 'POST';
+    
+    fetch(url, {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(promptData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('promptModal'));
+            modal.hide();
+            
+            // Reload data
+            loadActivePrompt();
+            loadAllPrompts();
+            
+            // Show success message
+            showToast(isEditMode ? 'Prompt đã được cập nhật!' : 'Prompt mới đã được tạo!', 'success');
+        } else {
+            alert('Lỗi: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error saving prompt:', error);
+        alert('Lỗi khi lưu prompt');
+    });
+}
+
+function setActivePrompt(promptId) {
+    fetch(`/api/prompts/${promptId}/activate`, {
+        method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadActivePrompt();
+            loadAllPrompts();
+            showToast('Đã chuyển sang prompt mới!', 'success');
+        } else {
+            alert('Lỗi: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error setting active prompt:', error);
+        alert('Lỗi khi chuyển prompt');
+    });
+}
+
+function duplicatePrompt(promptId) {
+    const prompt = currentPrompts.find(p => p.id === promptId);
+    if (!prompt) {
+        alert('Không tìm thấy prompt');
+        return;
+    }
+    
+    const newName = window.prompt(`Nhập tên cho bản sao của "${prompt.name}":`, `Copy of ${prompt.name}`);
+    if (!newName) return;
+    
+    fetch(`/api/prompts/${promptId}/duplicate`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ new_name: newName })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadAllPrompts();
+            showToast('Đã tạo bản sao prompt!', 'success');
+        } else {
+            alert('Lỗi: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error duplicating prompt:', error);
+        alert('Lỗi khi nhân bản prompt');
+    });
+}
+
+function deletePrompt(promptId, promptName) {
+    document.getElementById('deletePromptId').value = promptId;
+    document.getElementById('deletePromptName').textContent = promptName;
+    
+    const modal = new bootstrap.Modal(document.getElementById('deletePromptModal'));
+    modal.show();
+}
+
+function confirmDeletePrompt() {
+    const promptId = document.getElementById('deletePromptId').value;
+    
+    fetch(`/api/prompts/${promptId}`, {
+        method: 'DELETE'
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const modal = bootstrap.Modal.getInstance(document.getElementById('deletePromptModal'));
+            modal.hide();
+            
+            loadActivePrompt();
+            loadAllPrompts();
+            showToast('Prompt đã được xóa!', 'success');
+        } else {
+            alert('Lỗi: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error deleting prompt:', error);
+        alert('Lỗi khi xóa prompt');
+    });
+}
+
+function loadDefaultTemplate() {
+    fetch('/api/prompts/default/template')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                document.getElementById('promptContent').value = data.template;
+                updateCharacterCount();
+            } else {
+                alert('Lỗi khi tải template mặc định');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading default template:', error);
+            alert('Lỗi khi tải template mặc định');
+        });
+}
+
+function copyPromptContent() {
+    const content = document.getElementById('viewPromptContent').value;
+    navigator.clipboard.writeText(content).then(() => {
+        showToast('Đã sao chép nội dung prompt!', 'success');
+    }).catch(err => {
+        console.error('Error copying content:', err);
+        alert('Lỗi khi sao chép nội dung');
+    });
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('vi-VN') + ' ' + date.toLocaleTimeString('vi-VN', {hour: '2-digit', minute: '2-digit'});
+}
+
+function showToast(message, type = 'info') {
+    // Simple toast implementation
+    const toast = document.createElement('div');
+    toast.className = `alert alert-${type === 'success' ? 'success' : 'info'} position-fixed`;
+    toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    toast.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check' : 'info'}-circle me-2"></i>
+        ${message}
+        <button type="button" class="btn-close" onclick="this.parentElement.remove()"></button>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+        if (toast.parentElement) {
+            toast.remove();
+        }
+    }, 3000);
+}
+</script>
+{% endblock %}

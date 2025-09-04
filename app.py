@@ -16,7 +16,8 @@ from services import (
     TestCaseService, 
     APIDocumentationService, 
     CoverageAnalysisService,
-    ExportService
+    ExportService,
+    PromptManagementService
 )
 from utils import ErrorHandler, setup_logging
 from models import TestCase
@@ -45,10 +46,11 @@ def create_app(config_name: str = 'default') -> Flask:
     export_service = ExportService(test_case_service)
     excel_processor = ExcelProcessor()
     rag_service = RAGService()
+    prompt_service = PromptManagementService()
     
-    return app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor, rag_service
+    return app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor, rag_service, prompt_service
 
-app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor, rag_service = create_app()
+app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor, rag_service, prompt_service = create_app()
 
 # Global storage for uploaded files (in production, use Redis or database)
 uploaded_files = {}
@@ -281,7 +283,6 @@ def generate_test_cases():
     """Generate test cases using RAG analysis"""
     try:
         api_input = request.form.get('api_input', '').strip()
-        custom_prompt = request.form.get('custom_prompt', '').strip()
         
         if not api_input:
             return jsonify(ErrorHandler.handle_validation_error(['API documentation is required'])), 400
@@ -291,8 +292,11 @@ def generate_test_cases():
             if not rag_service.initialize():
                 return jsonify({'success': False, 'error': 'Failed to initialize RAG service'}), 500
         
-        # Use RAG service to generate test cases with optional custom prompt
-        result = rag_service.generate_test_cases(api_input, custom_prompt if custom_prompt else None)
+        # Get current prompt from prompt service
+        current_prompt = prompt_service.get_prompt_for_rag()
+        
+        # Use RAG service to generate test cases with current prompt
+        result = rag_service.generate_test_cases(api_input, current_prompt)
         
         if result['success']:
             return jsonify(result)
@@ -1144,6 +1148,246 @@ def api_business_flows():
     except Exception as e:
         logger.error(f"Error getting business flows: {e}")
         return jsonify({'success': False, 'error': str(e), 'flows': []}), 500
+
+@app.route('/api/get-current-prompt')
+def api_get_current_prompt():
+    """Get the current prompt template"""
+    try:
+        prompt_data = prompt_service.get_current_prompt()
+        return jsonify({
+            'success': True,
+            'prompt': prompt_data['prompt'],
+            'prompt_type': prompt_data['prompt_type']
+        })
+    except Exception as e:
+        logger.error(f"Error getting current prompt: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/save-custom-prompt', methods=['POST'])
+def api_save_custom_prompt():
+    """Save a custom prompt template"""
+    try:
+        data = request.json
+        if not data or 'custom_prompt' not in data:
+            return jsonify({'success': False, 'error': 'Custom prompt is required'}), 400
+        
+        custom_prompt = data['custom_prompt']
+        success = prompt_service.save_custom_prompt(custom_prompt)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Custom prompt saved successfully',
+                'prompt_type': 'custom'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to save custom prompt'}), 500
+            
+    except Exception as e:
+        logger.error(f"Error saving custom prompt: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/reset-prompt', methods=['POST'])
+def api_reset_prompt():
+    """Reset to default prompt template"""
+    try:
+        prompt_data = prompt_service.reset_to_default()
+        return jsonify({
+            'success': True,
+            'prompt': prompt_data['prompt'],
+            'prompt_type': prompt_data['prompt_type'],
+            'message': 'Prompt reset to default successfully'
+        })
+    except Exception as e:
+        logger.error(f"Error resetting prompt: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# New Prompt Management API Endpoints
+
+@app.route('/prompt-manager')
+def prompt_manager():
+    """Prompt management interface"""
+    return render_template('prompt_manager.html')
+
+@app.route('/api/prompts')
+def api_get_all_prompts():
+    """Get all prompt templates"""
+    try:
+        prompts = prompt_service.get_all_prompts()
+        active_prompt = prompt_service.get_active_prompt()
+        
+        # Mark active prompt
+        for prompt in prompts:
+            prompt['is_active'] = prompt['id'] == active_prompt['id'] if active_prompt else False
+        
+        return jsonify({
+            'success': True,
+            'prompts': prompts,
+            'total': len(prompts)
+        })
+    except Exception as e:
+        logger.error(f"Error getting all prompts: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/prompts/<prompt_id>')
+def api_get_prompt_by_id(prompt_id):
+    """Get a specific prompt by ID"""
+    try:
+        prompt = prompt_service.get_prompt_by_id(prompt_id)
+        if not prompt:
+            return jsonify({'success': False, 'error': 'Prompt not found'}), 404
+        
+        return jsonify({
+            'success': True,
+            'prompt': prompt
+        })
+    except Exception as e:
+        logger.error(f"Error getting prompt {prompt_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/prompts', methods=['POST'])
+def api_create_prompt():
+    """Create a new prompt template"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        content = data.get('content', '').strip()
+        
+        if not name or not content:
+            return jsonify({'success': False, 'error': 'Name and content are required'}), 400
+        
+        new_prompt = prompt_service.create_prompt(name, description, content)
+        
+        return jsonify({
+            'success': True,
+            'prompt': new_prompt,
+            'message': f'Prompt "{name}" created successfully'
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error creating prompt: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/prompts/<prompt_id>', methods=['PUT'])
+def api_update_prompt(prompt_id):
+    """Update an existing prompt template"""
+    try:
+        data = request.json
+        if not data:
+            return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+        name = data.get('name')
+        description = data.get('description')
+        content = data.get('content')
+        
+        updated_prompt = prompt_service.update_prompt(prompt_id, name, description, content)
+        
+        return jsonify({
+            'success': True,
+            'prompt': updated_prompt,
+            'message': f'Prompt updated successfully'
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error updating prompt {prompt_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/prompts/<prompt_id>', methods=['DELETE'])
+def api_delete_prompt(prompt_id):
+    """Delete a prompt template"""
+    try:
+        success = prompt_service.delete_prompt(prompt_id)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Prompt deleted successfully'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Prompt not found'}), 404
+            
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error deleting prompt {prompt_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/prompts/<prompt_id>/activate', methods=['POST'])
+def api_set_active_prompt(prompt_id):
+    """Set the active prompt for RAG generation"""
+    try:
+        success = prompt_service.set_active_prompt(prompt_id)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': f'Prompt "{prompt_id}" is now active'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to set active prompt'}), 500
+            
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error setting active prompt {prompt_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/prompts/active')
+def api_get_active_prompt():
+    """Get the currently active prompt"""
+    try:
+        active_prompt = prompt_service.get_active_prompt()
+        
+        if active_prompt:
+            return jsonify({
+                'success': True,
+                'prompt': active_prompt
+            })
+        else:
+            return jsonify({'success': False, 'error': 'No active prompt found'}), 404
+            
+    except Exception as e:
+        logger.error(f"Error getting active prompt: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/prompts/<prompt_id>/duplicate', methods=['POST'])
+def api_duplicate_prompt(prompt_id):
+    """Duplicate an existing prompt"""
+    try:
+        data = request.json or {}
+        new_name = data.get('new_name')
+        
+        duplicated_prompt = prompt_service.duplicate_prompt(prompt_id, new_name)
+        
+        return jsonify({
+            'success': True,
+            'prompt': duplicated_prompt,
+            'message': f'Prompt duplicated successfully'
+        })
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error duplicating prompt {prompt_id}: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/prompts/default/template')
+def api_get_default_template():
+    """Get the default prompt template"""
+    try:
+        from vietnamese_prompts import VIETNAMESE_RAG_PROMPT_TEMPLATE
+        return jsonify({
+            'success': True,
+            'template': VIETNAMESE_RAG_PROMPT_TEMPLATE
+        })
+    except Exception as e:
+        logger.error(f"Error getting default template: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 @app.errorhandler(404)
 def not_found(error):
     return render_template('404.html'), 404

@@ -8,6 +8,7 @@ import pandas as pd
 import re
 from typing import Dict, List, Any, Optional, Tuple
 import logging
+from models import TestCase
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +184,10 @@ class TemplateTestCaseExtractor:
                             cell_value = ""
                     
                     # Process the cell value
-                    if field in ['steps', 'expected']:
+                    if field == 'id':
+                        # Clean ID using TestCase.clean_id method
+                        test_case[field] = TestCase.clean_id(cell_value)
+                    elif field in ['steps', 'expected']:
                         # Handle list fields
                         test_case[field] = self._parse_list_field(cell_value)
                     else:

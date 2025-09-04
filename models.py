@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import json
+import re
 from pathlib import Path
 
 @dataclass
@@ -22,8 +23,36 @@ class TestCase:
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     
+    @staticmethod
+    def clean_id(raw_id: str) -> str:
+        """Clean and normalize ID to make it valid for database storage"""
+        if not raw_id or not str(raw_id).strip():
+            return "cleaned_id"
+        
+        # Convert to string and strip whitespace
+        clean_id = str(raw_id).strip()
+        
+        # Replace invalid characters with underscores
+        # Keep only letters, numbers, hyphens, and underscores
+        clean_id = re.sub(r'[^a-zA-Z0-9\-_]', '_', clean_id)
+        
+        # Remove multiple consecutive underscores
+        clean_id = re.sub(r'_+', '_', clean_id)
+        
+        # Remove leading/trailing underscores
+        clean_id = clean_id.strip('_')
+        
+        # Ensure it's not empty after cleaning
+        if not clean_id:
+            clean_id = "cleaned_id"
+        
+        return clean_id
+    
     def __post_init__(self):
-        """Set timestamps if not provided"""
+        """Set timestamps and clean ID if not provided"""
+        # Clean the ID automatically
+        self.id = self.clean_id(self.id)
+        
         if self.created_at is None:
             self.created_at = datetime.now().isoformat()
         if self.updated_at is None:
@@ -45,9 +74,13 @@ class TestCase:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'TestCase':
-        """Create from dictionary"""
+        """Create from dictionary with automatic ID cleaning"""
+        # Clean the ID before creating the object
+        raw_id = data.get('id', '')
+        cleaned_id = cls.clean_id(raw_id)
+        
         return cls(
-            id=data.get('id', ''),
+            id=cleaned_id,
             purpose=data.get('purpose', ''),
             scenerio=data.get('scenerio', ''),
             test_data=data.get('test_data', ''),

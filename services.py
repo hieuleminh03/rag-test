@@ -387,3 +387,265 @@ class ExportService:
         
         logger.info(f"Exported {len(test_cases)} test cases to {output_file}")
         return output_file
+
+
+class PromptManagementService:
+    """Service for managing multiple prompt templates with CRUD operations"""
+    
+    def __init__(self):
+        self.prompts_file = Config.DATA_DIR / 'prompts.json'
+        self.active_prompt_id = "default"
+        self._ensure_prompts_file()
+        
+    def _ensure_prompts_file(self):
+        """Ensure prompts file exists with default prompt"""
+        if not self.prompts_file.exists():
+            from vietnamese_prompts import VIETNAMESE_RAG_PROMPT_TEMPLATE
+            default_prompts = {
+                "prompts": {
+                    "default": {
+                        "id": "default",
+                        "name": "Vietnamese Default",
+                        "description": "Default Vietnamese prompt for test case generation",
+                        "content": VIETNAMESE_RAG_PROMPT_TEMPLATE,
+                        "created_at": datetime.now().isoformat(),
+                        "updated_at": datetime.now().isoformat(),
+                        "is_system": True
+                    }
+                },
+                "active_prompt_id": "default"
+            }
+            self._save_prompts_data(default_prompts)
+            logger.info("Created default prompts file")
+    
+    def _load_prompts_data(self) -> Dict[str, Any]:
+        """Load prompts data from file"""
+        try:
+            with open(self.prompts_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data
+        except Exception as e:
+            logger.error(f"Error loading prompts data: {e}")
+            return {"prompts": {}, "active_prompt_id": "default"}
+    
+    def _save_prompts_data(self, data: Dict[str, Any]):
+        """Save prompts data to file"""
+        try:
+            self.prompts_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.prompts_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Error saving prompts data: {e}")
+            raise
+    
+    def get_all_prompts(self) -> List[Dict[str, Any]]:
+        """Get all prompt templates"""
+        data = self._load_prompts_data()
+        prompts = list(data.get("prompts", {}).values())
+        # Sort by created_at, with system prompts first
+        prompts.sort(key=lambda x: (not x.get("is_system", False), x.get("created_at", "")))
+        return prompts
+    
+    def get_prompt_by_id(self, prompt_id: str) -> Optional[Dict[str, Any]]:
+        """Get a specific prompt by ID"""
+        data = self._load_prompts_data()
+        return data.get("prompts", {}).get(prompt_id)
+    
+    def create_prompt(self, name: str, description: str, content: str) -> Dict[str, Any]:
+        """Create a new prompt template"""
+        if not name or not name.strip():
+            raise ValueError("Prompt name is required")
+        if not content or not content.strip():
+            raise ValueError("Prompt content is required")
+        
+        data = self._load_prompts_data()
+        
+        # Generate unique ID
+        prompt_id = name.lower().replace(" ", "_").replace("-", "_")
+        counter = 1
+        original_id = prompt_id
+        while prompt_id in data["prompts"]:
+            prompt_id = f"{original_id}_{counter}"
+            counter += 1
+        
+        # Create new prompt
+        new_prompt = {
+            "id": prompt_id,
+            "name": name.strip(),
+            "description": description.strip() if description else "",
+            "content": content.strip(),
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "is_system": False
+        }
+        
+        data["prompts"][prompt_id] = new_prompt
+        self._save_prompts_data(data)
+        
+        logger.info(f"Created new prompt: {prompt_id}")
+        return new_prompt
+    
+    def update_prompt(self, prompt_id: str, name: str = None, description: str = None, content: str = None) -> Dict[str, Any]:
+        """Update an existing prompt template"""
+        data = self._load_prompts_data()
+        
+        if prompt_id not in data["prompts"]:
+            raise ValueError(f"Prompt with ID '{prompt_id}' not found")
+        
+        prompt = data["prompts"][prompt_id]
+        
+        # Don't allow updating system prompts
+        if prompt.get("is_system", False):
+            raise ValueError("Cannot update system prompts")
+        
+        # Update fields
+        if name is not None:
+            if not name.strip():
+                raise ValueError("Prompt name cannot be empty")
+            prompt["name"] = name.strip()
+        
+        if description is not None:
+            prompt["description"] = description.strip()
+        
+        if content is not None:
+            if not content.strip():
+                raise ValueError("Prompt content cannot be empty")
+            prompt["content"] = content.strip()
+        
+        prompt["updated_at"] = datetime.now().isoformat()
+        
+        self._save_prompts_data(data)
+        logger.info(f"Updated prompt: {prompt_id}")
+        return prompt
+    
+    def delete_prompt(self, prompt_id: str) -> bool:
+        """Delete a prompt template"""
+        data = self._load_prompts_data()
+        
+        if prompt_id not in data["prompts"]:
+            return False
+        
+        prompt = data["prompts"][prompt_id]
+        
+        # Don't allow deleting system prompts
+        if prompt.get("is_system", False):
+            raise ValueError("Cannot delete system prompts")
+        
+        # If this was the active prompt, switch to default
+        if data["active_prompt_id"] == prompt_id:
+            data["active_prompt_id"] = "default"
+            self.active_prompt_id = "default"
+        
+        del data["prompts"][prompt_id]
+        self._save_prompts_data(data)
+        
+        logger.info(f"Deleted prompt: {prompt_id}")
+        return True
+    
+    def set_active_prompt(self, prompt_id: str) -> bool:
+        """Set the active prompt for RAG generation"""
+        data = self._load_prompts_data()
+        
+        if prompt_id not in data["prompts"]:
+            raise ValueError(f"Prompt with ID '{prompt_id}' not found")
+        
+        data["active_prompt_id"] = prompt_id
+        self.active_prompt_id = prompt_id
+        self._save_prompts_data(data)
+        
+        logger.info(f"Set active prompt: {prompt_id}")
+        return True
+    
+    def get_active_prompt(self) -> Dict[str, Any]:
+        """Get the currently active prompt"""
+        data = self._load_prompts_data()
+        active_id = data.get("active_prompt_id", "default")
+        self.active_prompt_id = active_id
+        
+        active_prompt = data.get("prompts", {}).get(active_id)
+        if not active_prompt:
+            # Fallback to default if active prompt not found
+            active_prompt = data.get("prompts", {}).get("default")
+            if active_prompt:
+                self.active_prompt_id = "default"
+        
+        return active_prompt
+    
+    def get_current_prompt(self) -> Dict[str, Any]:
+        """Get the current prompt template (for backward compatibility)"""
+        active_prompt = self.get_active_prompt()
+        if active_prompt:
+            return {
+                "prompt": active_prompt["content"],
+                "prompt_type": "custom" if not active_prompt.get("is_system", False) else "default",
+                "prompt_id": active_prompt["id"],
+                "prompt_name": active_prompt["name"]
+            }
+        else:
+            # Fallback
+            from vietnamese_prompts import VIETNAMESE_RAG_PROMPT_TEMPLATE
+            return {
+                "prompt": VIETNAMESE_RAG_PROMPT_TEMPLATE,
+                "prompt_type": "default",
+                "prompt_id": "default",
+                "prompt_name": "Vietnamese Default"
+            }
+    
+    def get_prompt_for_rag(self) -> Optional[str]:
+        """Get the prompt template for RAG service"""
+        active_prompt = self.get_active_prompt()
+        if active_prompt and not active_prompt.get("is_system", False):
+            return active_prompt["content"]
+        return None  # RAG service will use default Vietnamese template
+    
+    def duplicate_prompt(self, prompt_id: str, new_name: str = None) -> Dict[str, Any]:
+        """Duplicate an existing prompt"""
+        data = self._load_prompts_data()
+        
+        if prompt_id not in data["prompts"]:
+            raise ValueError(f"Prompt with ID '{prompt_id}' not found")
+        
+        original_prompt = data["prompts"][prompt_id]
+        
+        if new_name is None:
+            new_name = f"Copy of {original_prompt['name']}"
+        
+        return self.create_prompt(
+            name=new_name,
+            description=f"Copy of: {original_prompt['description']}",
+            content=original_prompt["content"]
+        )
+    
+    # Legacy methods for backward compatibility
+    def save_custom_prompt(self, custom_prompt: str) -> bool:
+        """Save a custom prompt template (legacy method)"""
+        try:
+            # Create or update a "custom" prompt
+            data = self._load_prompts_data()
+            if "custom" in data["prompts"]:
+                self.update_prompt("custom", content=custom_prompt)
+            else:
+                self.create_prompt("Custom Prompt", "User-defined custom prompt", custom_prompt)
+                # Rename the generated ID to "custom"
+                data = self._load_prompts_data()
+                # Find the newly created prompt and rename it
+                for pid, prompt in data["prompts"].items():
+                    if prompt["name"] == "Custom Prompt" and not prompt.get("is_system", False):
+                        if pid != "custom":
+                            data["prompts"]["custom"] = prompt
+                            data["prompts"]["custom"]["id"] = "custom"
+                            del data["prompts"][pid]
+                            self._save_prompts_data(data)
+                        break
+            
+            self.set_active_prompt("custom")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving custom prompt: {e}")
+            return False
+    
+    def reset_to_default(self) -> Dict[str, Any]:
+        """Reset to default prompt template (legacy method)"""
+        self.set_active_prompt("default")
+        return self.get_current_prompt()
+

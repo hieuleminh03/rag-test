@@ -32,11 +32,11 @@
                         </div>
                     </div>
                     
-                    <!-- Custom Prompt Indicator -->
-                    <div id="customPromptIndicator" class="alert alert-info py-2 mb-3" style="display: none;">
-                        <i class="fas fa-edit me-1"></i>
-                        <small><strong>Đang sử dụng prompt tùy chỉnh.</strong> 
-                        <a href="#" onclick="resetToDefaultPrompt()" class="alert-link">Khôi phục mặc định</a></small>
+                    <!-- Active Prompt Indicator -->
+                    <div id="activePromptIndicator" class="alert alert-info py-2 mb-3">
+                        <i class="fas fa-info-circle me-1"></i>
+                        <small><strong>Prompt đang sử dụng:</strong> <span id="activePromptName">Đang tải...</span> | 
+                        <a href="{{ url_for('prompt_manager') }}" class="alert-link">Quản lý Prompt</a></small>
                     </div>
                     
                     <div class="d-flex gap-2 justify-content-end">
@@ -154,31 +154,6 @@
             </div>
         </div>
 
-        <!-- RAG Process Info -->
-        <div class="card mt-4">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Cách thức hoạt động của RAG</h5>
-            </div>
-            <div class="card-body">
-                <ol class="small mb-3">
-                    <li><strong>Phân tích tài liệu:</strong> Phân tích cấu trúc tài liệu API</li>
-                    <li><strong>Tìm kiếm Vector:</strong> Tìm Test Case tương tự trong cơ sở dữ liệu</li>
-                    <li><strong>Xây dựng Context:</strong> Kết hợp các ví dụ liên quan</li>
-                    <li><strong>Tạo bằng LLM:</strong> Tạo Test Case mới sử dụng Gemini</li>
-                    <li><strong>Kiểm tra:</strong> Đảm bảo Test Case tuân theo định dạng</li>
-                </ol>
-                
-                <div class="border-top pt-3">
-                    <h6 class="mb-2">Cơ sở dữ liệu hiện tại:</h6>
-                    <ul class="small mb-0">
-                        <li>{{ total_test_cases }} Test Case toàn diện</li>
-                        <li>Tìm kiếm Top-20 tương tự</li>
-                        <li>Tập trung vào logic nghiệp vụ</li>
-                        <li>Hỗ trợ tiếng Việt + tiếng Anh</li>
-                    </ul>
-                </div>
-            </div>
-        </div>
 
         <!-- Suggestions -->
         {% if suggestions %}
@@ -216,25 +191,6 @@
         </div>
         {% endif %}
 
-        <!-- Sample Templates -->
-        <div class="card mt-4">
-            <div class="card-header">
-                <h5 class="mb-0"><i class="fas fa-file-alt me-2"></i>Mẫu tài liệu API</h5>
-            </div>
-            <div class="card-body">
-                <div class="d-grid gap-2">
-                    <button type="button" class="btn btn-outline-primary" onclick="loadSampleAPI()">
-                        <i class="fas fa-wallet me-1"></i>Payment API
-                    </button>
-                    <button type="button" class="btn btn-outline-info" onclick="loadUserAPI()">
-                        <i class="fas fa-user me-1"></i>User Management
-                    </button>
-                    <button type="button" class="btn btn-outline-success" onclick="loadOrderAPI()">
-                        <i class="fas fa-shopping-cart me-1"></i>Order Processing
-                    </button>
-                </div>
-            </div>
-        </div>
     </div>
 </div>
 
@@ -337,14 +293,6 @@
                             <li>Loại prompt: <span id="promptType">-</span></li>
                         </ul>
                     </div>
-                    <div class="col-md-6">
-                        <h6>Ghi chú:</h6>
-                        <ul class="small">
-                            <li>Context được lấy từ vector similarity search</li>
-                            <li>Prompt được format với {context} và {question}</li>
-                            <li>LLM: Google Gemini 1.5 Pro</li>
-                        </ul>
-                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -362,98 +310,37 @@
 
 {% block scripts %}
 <script>
-// Default prompt template (Vietnamese)
-const DEFAULT_PROMPT = `Bạn là một chuyên gia tạo test case chuyên về phân tích tài liệu API và tạo ra các kịch bản kiểm thử toàn diện.
+// Prompt management is now handled entirely in the backend
+let currentPromptType = 'default'; // Track which prompt type is being used
 
-## TỔNG QUAN NHIỆM VỤ
-Phân tích tài liệu API được cung cấp và tạo ra các test case chi tiết bao phủ các luồng logic nghiệp vụ, tập trung vào các kịch bản thực tế và các trường hợp biên.
+// Load active prompt info on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadActivePromptInfo();
+});
 
-## PHÂN TÍCH NGỮ CẢNH
-Nghiên cứu các test case tương tự này để hiểu định dạng mong đợi và các mẫu bao phủ:
-{context}
-
-## TÀI LIỆU API CẦN PHÂN TÍCH
-{question}
-
-## YÊU CẦU TẠO TEST CASE
-
-### Cấu trúc JSON (BẮT BUỘC)
-Mỗi test case phải tuân theo cấu trúc chính xác này:
-\`\`\`json
-{
-  "id": "id_test_mô_tả_với_kịch_bản",
-  "purpose": "Mục đích nghiệp vụ rõ ràng của test",
-  "scenerio": "Kịch bản cụ thể được kiểm thử với các điều kiện",
-  "test_data": "Nguồn dữ liệu cần thiết, bảng DB, hoặc dữ liệu mock",
-  "steps": [
-    "1. Bước chi tiết với actor và hành động",
-    "2. Bao gồm tương tác hệ thống và API calls",
-    "3. Chỉ định các thao tác database và validation"
-  ],
-  "expected": [
-    "1. Hành vi hệ thống mong đợi với status/giá trị cụ thể",
-    "2. Thay đổi trạng thái database với chi tiết bảng và trường",
-    "3. Định dạng phản hồi API và mã lỗi nếu có"
-  ],
-  "note": "Tham chiếu API, quy tắc nghiệp vụ, hoặc ràng buộc kỹ thuật"
+function loadActivePromptInfo() {
+    fetch('/api/prompts/active')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const prompt = data.prompt;
+                const promptName = prompt.name;
+                const promptType = prompt.is_system ? 'System' : 'Custom';
+                
+                document.getElementById('activePromptName').innerHTML = 
+                    `<strong>${promptName}</strong> <span class="badge bg-${prompt.is_system ? 'primary' : 'success'}">${promptType}</span>`;
+                
+                currentPromptType = prompt.is_system ? 'default' : 'custom';
+                updatePromptIndicator();
+            } else {
+                document.getElementById('activePromptName').textContent = 'Lỗi tải thông tin prompt';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading active prompt info:', error);
+            document.getElementById('activePromptName').textContent = 'Lỗi kết nối';
+        });
 }
-\`\`\`
-
-### CÁC LĨNH VỰC BAO PHỦ (Tạo test case cho mỗi lĩnh vực có thể áp dụng)
-
-1. **Kịch bản Đường Đi Hạnh Phúc**
-   - Thực thi luồng nghiệp vụ bình thường
-   - Tích hợp API thành công
-   - Cập nhật database đúng cách
-
-2. **Xử Lý Lỗi & Trường Hợp Biên**
-   - Timeout API và lỗi kết nối
-   - Dữ liệu đầu vào không hợp lệ và lỗi validation
-   - Hệ thống không khả dụng và chế độ bảo trì
-   - Tài nguyên không đủ (số dư, quota, v.v.)
-
-3. **Validation Logic Nghiệp Vụ**
-   - Luồng có điều kiện và điểm quyết định
-   - Chuyển đổi và tính toán dữ liệu
-   - Chuyển đổi trạng thái và cập nhật status
-   - Validation quy trình nhiều bước
-
-4. **Tích Hợp & Đồng Thời**
-   - Giao tiếp hệ thống bên ngoài
-   - Tính nhất quán giao dịch database
-   - Xử lý request đồng thời
-   - Ngăn chặn race condition
-
-5. **Tính Nhất Quán Dữ Liệu & Rollback**
-   - Kịch bản rollback giao dịch
-   - Validation tính toàn vẹn dữ liệu
-   - Kiểm tra tính nhất quán cross-table
-   - Xác minh audit trail
-
-### QUY ƯỚC ĐẶT TÊN
-- ID: Sử dụng định dạng "danh_mục-kịch_bản_số" (ví dụ: "thanh_toan-timeout_1", "validation-san_pham_khong_hop_le_1")
-- Mô tả cụ thể và chi tiết về kịch bản được kiểm thử
-
-### CHI TIẾT KỸ THUẬT CẦN BAO GỒM
-- Bảng và trường database cụ thể
-- Tham chiếu endpoint API và phiên bản
-- Mã status và thông báo lỗi
-- Ràng buộc thời gian và timeout
-- Phụ thuộc cấu hình (CMS, v.v.)
-
-## YÊU CẦU ĐẦU RA
-Tạo không giới hạn test case toàn diện bao phủ các khía cạnh khác nhau của tài liệu API. Đảm bảo mỗi test case là:
-- **Cụ thể**: Kịch bản rõ ràng với điều kiện chính xác
-- **Có thể thực hiện**: Các bước chi tiết có thể được thực thi
-- **Có thể xác minh**: Kết quả mong đợi có thể đo lường
-- **Thực tế**: Dựa trên yêu cầu nghiệp vụ thực tế
-
-Tập trung vào kiểm thử logic nghiệp vụ, không phải validation cơ bản. Mỗi test nên đại diện cho một hành trình người dùng có ý nghĩa hoặc tương tác hệ thống.
-
-## CÁC TEST CASE ĐƯỢC TẠO:`;
-
-// Store current prompt
-let currentPrompt = DEFAULT_PROMPT;
 
 function reviewPrompt() {
     const apiInput = document.getElementById('apiInput').value.trim();
@@ -463,59 +350,128 @@ function reviewPrompt() {
         return;
     }
     
-    // Load current prompt into modal
-    document.getElementById('promptText').value = currentPrompt;
-    
-    // Show modal
-    const modal = new bootstrap.Modal(document.getElementById('promptModal'));
-    modal.show();
+    // Fetch current prompt from backend
+    fetch('/api/get-current-prompt', {
+        method: 'GET',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('promptText').value = data.prompt;
+            currentPromptType = data.prompt_type;
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('promptModal'));
+            modal.show();
+        } else {
+            alert('Lỗi khi tải prompt: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching prompt:', error);
+        alert('Lỗi kết nối khi tải prompt');
+    });
 }
 
 function resetPrompt() {
-    document.getElementById('promptText').value = DEFAULT_PROMPT;
-    currentPrompt = DEFAULT_PROMPT;
+    // Reset to default prompt on backend
+    fetch('/api/reset-prompt', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            document.getElementById('promptText').value = data.prompt;
+            currentPromptType = 'default';
+            updatePromptIndicator();
+        } else {
+            alert('Lỗi khi reset prompt: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error resetting prompt:', error);
+        alert('Lỗi kết nối khi reset prompt');
+    });
 }
 
 function savePromptAndGenerate() {
-    // Save the edited prompt
-    currentPrompt = document.getElementById('promptText').value;
+    // Save the edited prompt to backend
+    const customPrompt = document.getElementById('promptText').value;
     
-    // Update UI to show custom prompt is being used
-    updatePromptIndicator();
-    
-    // Close modal
-    const modal = bootstrap.Modal.getInstance(document.getElementById('promptModal'));
-    modal.hide();
-    
-    // Generate test cases with custom prompt
-    generateTestCases(true);
+    fetch('/api/save-custom-prompt', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            custom_prompt: customPrompt
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentPromptType = 'custom';
+            updatePromptIndicator();
+            
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(document.getElementById('promptModal'));
+            modal.hide();
+            
+            // Generate test cases with custom prompt
+            generateTestCases();
+        } else {
+            alert('Lỗi khi lưu prompt: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error saving prompt:', error);
+        alert('Lỗi kết nối khi lưu prompt');
+    });
 }
 
 function resetToDefaultPrompt() {
-    currentPrompt = DEFAULT_PROMPT;
-    updatePromptIndicator();
+    fetch('/api/reset-prompt', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentPromptType = 'default';
+            updatePromptIndicator();
+        } else {
+            alert('Lỗi khi reset prompt: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error resetting prompt:', error);
+        alert('Lỗi kết nối khi reset prompt');
+    });
 }
 
 function updatePromptIndicator() {
-    const indicator = document.getElementById('customPromptIndicator');
     const promptBtn = document.getElementById('promptBtn');
     
-    if (currentPrompt !== DEFAULT_PROMPT) {
-        // Show custom prompt indicator
-        indicator.style.display = 'block';
+    if (currentPromptType === 'custom') {
         promptBtn.innerHTML = '<i class="fas fa-edit me-1"></i>Chỉnh sửa Prompt';
         promptBtn.classList.remove('btn-outline-primary');
         promptBtn.classList.add('btn-warning');
     } else {
-        // Hide indicator and reset button
-        indicator.style.display = 'none';
         promptBtn.innerHTML = '<i class="fas fa-eye me-1"></i>Xem Prompt';
         promptBtn.classList.remove('btn-warning');
         promptBtn.classList.add('btn-outline-primary');
     }
 }
 
-function generateTestCases(useCustomPrompt = false) {
+function generateTestCases() {
     const apiInput = document.getElementById('apiInput').value.trim();
     
     if (!apiInput) {
@@ -527,11 +483,8 @@ function generateTestCases(useCustomPrompt = false) {
     document.getElementById('loadingCard').style.display = 'block';
     document.getElementById('resultsCard').style.display = 'none';
     
-    // Prepare request data
+    // Prepare request data - backend will handle prompt selection
     let requestData = 'api_input=' + encodeURIComponent(apiInput);
-    if (useCustomPrompt) {
-        requestData += '&custom_prompt=' + encodeURIComponent(currentPrompt);
-    }
     
     // API call
     fetch('/generate-test-cases', {
@@ -1058,7 +1011,7 @@ function resetSystem() {
             document.getElementById('loadingCard').style.display = 'none';
             
             // Reset prompt to default
-            currentPrompt = DEFAULT_PROMPT;
+            currentPromptType = 'default';
             updatePromptIndicator();
             
             // Refresh status
