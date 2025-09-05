@@ -396,6 +396,11 @@ let currentPromptType = 'default'; // Track which prompt type is being used
 // Load active prompt info on page load
 document.addEventListener('DOMContentLoaded', function() {
     loadActivePromptInfo();
+    
+    // Auto-refresh RAG status on page load to trigger auto-connection
+    setTimeout(() => {
+        refreshStatus();
+    }, 1000);
 });
 
 function loadActivePromptInfo() {
@@ -1430,12 +1435,98 @@ function refreshStatus() {
     .then(data => {
         if (data.success) {
             updateStatusDisplay(data.status);
+            
+            // Auto-connect if not initialized
+            if (!data.status.initialized) {
+                console.log('RAG not connected, attempting auto-connection...');
+                connectToRAG();
+            }
         } else {
             console.error('Error getting RAG status:', data.error);
         }
     })
     .catch(error => {
         console.error('Error getting RAG status:', error);
+    });
+}
+
+function connectToRAG() {
+    // Show connecting status
+    const container = document.getElementById('ragStatusContainer');
+    if (container) {
+        container.innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                <strong>Đang kết nối RAG...</strong>
+                <p class="mb-0 small">Hệ thống đang khởi tạo kết nối với RAG service...</p>
+            </div>
+        `;
+    }
+    
+    fetch('/api/connect-rag', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            console.log('RAG connected successfully');
+            updateStatusDisplay(data.status);
+            
+            // Show success message briefly
+            if (container) {
+                const successAlert = document.createElement('div');
+                successAlert.className = 'alert alert-success alert-dismissible fade show';
+                successAlert.innerHTML = `
+                    <i class="fas fa-check-circle me-2"></i>
+                    <strong>Kết nối thành công!</strong> RAG service đã sẵn sàng.
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                container.insertBefore(successAlert, container.firstChild);
+                
+                // Auto-dismiss after 3 seconds
+                setTimeout(() => {
+                    if (successAlert.parentNode) {
+                        successAlert.remove();
+                    }
+                }, 3000);
+            }
+        } else {
+            console.error('Failed to connect RAG:', data.error);
+            updateStatusDisplay({
+                initialized: false,
+                embedded: false,
+                client_connected: false,
+                vectorstore_ready: false,
+                retriever_ready: false,
+                workflow_ready: false
+            });
+            
+            // Show error message
+            if (container) {
+                const errorAlert = document.createElement('div');
+                errorAlert.className = 'alert alert-danger alert-dismissible fade show';
+                errorAlert.innerHTML = `
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>Kết nối thất bại!</strong> ${data.error}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                container.insertBefore(errorAlert, container.firstChild);
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error connecting to RAG:', error);
+        updateStatusDisplay({
+            initialized: false,
+            embedded: false,
+            client_connected: false,
+            vectorstore_ready: false,
+            retriever_ready: false,
+            workflow_ready: false
+        });
     });
 }
 
@@ -1464,7 +1555,12 @@ function updateStatusDisplay(status) {
             </div>
         </div>
         
-        ${!status.embedded ? `
+        ${!status.initialized ? `
+        <div class="alert alert-warning py-2 mb-3">
+            <i class="fas fa-exclamation-triangle me-1"></i>
+            <small>RAG chưa được kết nối. Nhấn "Kết nối RAG" để khởi tạo.</small>
+        </div>
+        ` : !status.embedded ? `
         <div class="alert alert-warning py-2 mb-3">
             <i class="fas fa-exclamation-triangle me-1"></i>
             <small>Cần embedding dữ liệu để RAG hoạt động đúng cách.</small>
@@ -1472,7 +1568,12 @@ function updateStatusDisplay(status) {
         ` : ''}
         
         <div class="d-grid gap-2">
-            <button type="button" class="btn btn-primary" onclick="embedDocuments()" id="embedBtn">
+            ${!status.initialized ? `
+            <button type="button" class="btn btn-success" onclick="connectToRAG()" id="connectBtn">
+                <i class="fas fa-plug me-1"></i>Kết nối RAG
+            </button>
+            ` : ''}
+            <button type="button" class="btn btn-primary" onclick="embedDocuments()" id="embedBtn" ${!status.initialized ? 'disabled' : ''}>
                 <i class="fas fa-database me-1"></i>Embedding dữ liệu
             </button>
             <button type="button" class="btn btn-outline-secondary" onclick="refreshStatus()">

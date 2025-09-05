@@ -28,6 +28,11 @@ from rag_service import RAGService
 setup_logging()
 logger = logging.getLogger(__name__)
 
+# Initialize services globally so they can be accessed by caching functions
+test_case_service = TestCaseService()
+api_doc_service = APIDocumentationService()
+rag_service = RAGService()
+
 def create_app(config_name: str = 'default') -> Flask:
     """Application factory"""
     app = Flask(__name__)
@@ -39,13 +44,10 @@ def create_app(config_name: str = 'default') -> Flask:
     # Initialize directories
     Config.init_directories()
     
-    # Initialize services
-    test_case_service = TestCaseService()
-    api_doc_service = APIDocumentationService()
+    # Initialize remaining services
     coverage_service = CoverageAnalysisService(test_case_service, api_doc_service)
     export_service = ExportService(test_case_service)
     excel_processor = ExcelProcessor()
-    rag_service = RAGService()
     prompt_service = PromptManagementService()
     
     return app, test_case_service, api_doc_service, coverage_service, export_service, excel_processor, rag_service, prompt_service
@@ -172,11 +174,27 @@ def get_cached_rag_status():
     # Get fresh status (without expensive similarity search)
     try:
         if rag_service.is_initialized:
+            # Check client connection safely
+            client_connected = False
+            try:
+                if rag_service.client is not None:
+                    # Try to check if client is connected
+                    if hasattr(rag_service.client, 'is_ready'):
+                        client_connected = rag_service.client.is_ready()
+                    elif hasattr(rag_service.client, 'is_connected'):
+                        client_connected = rag_service.client.is_connected()
+                    else:
+                        # Fallback: assume connected if client exists
+                        client_connected = True
+            except Exception as client_e:
+                logger.debug(f"Error checking client connection: {client_e}")
+                client_connected = False
+            
             # Get basic status without similarity search
             status = {
                 "initialized": rag_service.is_initialized,
                 "embedded": rag_service.is_embedded,
-                "client_connected": rag_service.client is not None and rag_service.client.is_ready(),
+                "client_connected": client_connected,
                 "vectorstore_ready": rag_service.vectorstore is not None,
                 "retriever_ready": rag_service.retriever is not None,
                 "workflow_ready": rag_service.app is not None
@@ -228,12 +246,19 @@ def invalidate_cache(cache_key=None):
     
     if cache_key:
         if cache_key in _cache:
-            _cache[cache_key] = {'content': None, 'timestamp': 0}
+            # Preserve the correct structure for each cache type
+            if cache_key == 'api_doc':
+                _cache[cache_key] = {'content': None, 'timestamp': 0}
+            elif cache_key == 'rag_status':
+                _cache[cache_key] = {'status': None, 'timestamp': 0}
+            elif cache_key == 'test_cases_count':
+                _cache[cache_key] = {'count': 0, 'timestamp': 0}
             logger.info(f"Invalidated cache for {cache_key}")
     else:
-        # Invalidate all caches
-        for key in _cache:
-            _cache[key] = {'content': None, 'timestamp': 0}
+        # Invalidate all caches with correct structure
+        _cache['api_doc'] = {'content': None, 'timestamp': 0}
+        _cache['rag_status'] = {'status': None, 'timestamp': 0}
+        _cache['test_cases_count'] = {'count': 0, 'timestamp': 0}
         logger.info("Invalidated all caches")
 
 # Add cache invalidation endpoint
@@ -348,8 +373,20 @@ def rag_demo():
         # Get cached test cases count instead of loading all test cases
         total_test_cases = get_cached_test_cases_count()
         
-        # Get cached RAG status (avoids expensive similarity search)
+        # Auto-initialize RAG service if not connected
         rag_status = get_cached_rag_status()
+        if not rag_status.get('initialized', False):
+            logger.info("RAG service not initialized, attempting auto-initialization...")
+            try:
+                if rag_service.initialize():
+                    logger.info("RAG service auto-initialized successfully")
+                    # Invalidate cache to get fresh status
+                    invalidate_cache('rag_status')
+                    rag_status = get_cached_rag_status()
+                else:
+                    logger.warning("RAG service auto-initialization failed")
+            except Exception as init_e:
+                logger.error(f"Error during RAG auto-initialization: {init_e}")
         
         return render_template('rag_demo.html', 
                              api_doc=api_doc[:2000] + "..." if len(api_doc or "") > 2000 else (api_doc or ""),
@@ -563,6 +600,41 @@ def rag_status():
     except Exception as e:
         logger.error(f"Error getting RAG status: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/connect-rag', methods=['POST'])
+def api_connect_rag():
+    """Initialize/Connect RAG service"""
+    try:
+        logger.info("Manual RAG connection requested")
+        
+        # Try to initialize RAG service
+        if rag_service.initialize():
+            logger.info("RAG service connected successfully")
+            
+            # Invalidate cache to get fresh status
+            invalidate_cache('rag_status')
+            
+            # Get updated status
+            status = get_cached_rag_status()
+            
+            return jsonify({
+                'success': True,
+                'message': 'RAG service connected successfully',
+                'status': status
+            })
+        else:
+            logger.error("RAG service connection failed")
+            return jsonify({
+                'success': False,
+                'error': 'Failed to initialize RAG service'
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Error connecting RAG service: {e}")
+        return jsonify({
+            'success': False,
+            'error': f'Error connecting RAG service: {str(e)}'
+        }), 500
 
 @app.route('/reset-system', methods=['POST'])
 def reset_system():
